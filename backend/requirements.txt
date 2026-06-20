@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pydantic
+pandas
+scikit-learn
+xgboost
+networkx
+pytest
+pytest-asyncio
