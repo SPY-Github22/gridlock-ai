@@ -57,6 +57,7 @@ class EventSimulationResponse(BaseModel):
     risk_score: float = Field(..., description="Congestion ripple risk score from 1-10")
     requires_road_closure: float = Field(..., description="Probability of road closure 0.0-1.0")
     recommended_actions: List[RecommendedAction]
+    affected_roads: dict = Field(default_factory=lambda: {"type": "FeatureCollection", "features": []})
 
 def haversine_distance(lat1, lon1, lat2, lon2):
     r = 6371.0  # Earth's radius in km
@@ -181,8 +182,105 @@ def simulate_event(request: SimulationBatchRequest):
             )
         )
 
+    # 9. Extract Road Geometries via BFS
+    affected_roads_geojson = {"type": "FeatureCollection", "features": []}
+    
+    if graph and hazards and final_risk_score > 0:
+        # Define max hops based on risk score (1 hop roughly equals 1 block/intersection)
+        base_hops = int(final_risk_score * 2) 
+        
+        for event in hazards:
+            # Find the nearest node in the graph
+            # osmnx nodes usually have 'x' and 'y' attributes
+            try:
+                # Basic nearest node approximation (Euclidean on lat/lng)
+                nearest_node = min(
+                    graph.nodes(data=True),
+                    key=lambda n: (n[1].get('y', 0) - event.latitude)**2 + (n[1].get('x', 0) - event.longitude)**2
+                )[0]
+                
+                # BFS Traversal
+                visited_edges = set()
+                queue = [(nearest_node, 0)] # (node, current_hop_depth)
+                visited_nodes = {nearest_node: 0}
+                
+                while queue:
+                    current_node, depth = queue.pop(0)
+                    
+                    if depth >= base_hops:
+                        continue
+                        
+                    for neighbor in graph.neighbors(current_node):
+                        edge_data = graph.get_edge_data(current_node, neighbor)
+                        # MultiDiGraph returns a dict of edges between nodes
+                        if edge_data:
+                            # Usually edge key 0 is the primary segment
+                            edge = edge_data[0]
+                            
+                            # Capacity Scaling: If it's a primary road, the blast travels faster/farther
+                            highway_type = edge.get('highway', 'residential')
+                            # If it's a major road, it "costs" less hops to travel down it, expanding the radius along arteries!
+                            hop_cost = 1
+                            if isinstance(highway_type, list):
+                                highway_type = highway_type[0]
+                                
+                            if highway_type in ['primary', 'trunk', 'motorway']:
+                                hop_cost = 0.5 # Travels twice as far down main roads!
+                            elif highway_type in ['secondary', 'tertiary']:
+                                hop_cost = 0.8
+                                
+                            new_depth = depth + hop_cost
+                            
+                            if neighbor not in visited_nodes or new_depth < visited_nodes[neighbor]:
+                                visited_nodes[neighbor] = new_depth
+                                queue.append((neighbor, new_depth))
+                                
+                            # Avoid processing the same edge twice
+                            edge_key = tuple(sorted([current_node, neighbor]))
+                            if edge_key not in visited_edges:
+                                visited_edges.add(edge_key)
+                                
+                                # Determine Color based on depth (Distance from epicenter)
+                                # Depth 0 = Red [255, 50, 50]
+                                # Depth max = Green [50, 255, 50]
+                                # Middle = Yellow [255, 255, 50]
+                                ratio = depth / float(base_hops)
+                                if ratio < 0.33:
+                                    color = [255, 50, 50, 200] # Red
+                                elif ratio < 0.66:
+                                    color = [255, 165, 0, 180] # Orange/Yellow
+                                else:
+                                    color = [50, 255, 50, 150] # Green
+                                
+                                # Get Line Geometry
+                                # If 'geometry' exists (shapely LineString), use it, otherwise draw a straight line
+                                coords = []
+                                if 'geometry' in edge:
+                                    coords = [[pt[0], pt[1]] for pt in edge['geometry'].coords]
+                                else:
+                                    n1 = graph.nodes[current_node]
+                                    n2 = graph.nodes[neighbor]
+                                    coords = [[n1['x'], n1['y']], [n2['x'], n2['y']]]
+                                
+                                feature = {
+                                    "type": "Feature",
+                                    "geometry": {
+                                        "type": "LineString",
+                                        "coordinates": coords
+                                    },
+                                    "properties": {
+                                        "color": color
+                                    }
+                                }
+                                affected_roads_geojson["features"].append(feature)
+                                
+            except Exception as e:
+                print(f"Error in road extraction: {e}")
+                pass
+
     return EventSimulationResponse(
         risk_score=final_risk_score,
         requires_road_closure=requires_road_closure,
-        recommended_actions=actions
+        recommended_actions=actions,
+        affected_roads=affected_roads_geojson
     )
