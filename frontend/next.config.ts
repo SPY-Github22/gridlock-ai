@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
-const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const backendUrl = process.env.NEXT_PUBLIC_API_URL?.startsWith('http')
+  ? process.env.NEXT_PUBLIC_API_URL
+  : 'https://traffic-simulation-production.up.railway.app';
 
 const nextConfig: NextConfig = {
   typescript: {
