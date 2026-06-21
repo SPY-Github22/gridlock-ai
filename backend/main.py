@@ -271,7 +271,8 @@ def simulate_event(request: SimulationBatchRequest):
                                         "coordinates": coords
                                     },
                                     "properties": {
-                                        "color": color
+                                        "color": color,
+                                        "eventHour": hour_map.get(event.time_of_day, 12)
                                     }
                                 }
                                 affected_roads_geojson["features"].append(feature)
