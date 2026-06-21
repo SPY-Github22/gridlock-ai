@@ -171,7 +171,7 @@ export default function GeospatialMap() {
           },
           getRadius: (d) => {
             if (d.cause === 'Barricade' || d.cause === 'Police Squad') return 30;
-            const baseRadius = riskScore > 0 ? 50 + (riskScore * 15) : 30;
+            const baseRadius = (riskScore ?? 0) > 0 ? 50 + ((riskScore ?? 0) * 15) : 30;
             return baseRadius * pulseFactor;
           },
           stroked: true,

@@ -3,12 +3,11 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import { AlertCircle, ShieldAlert, Navigation } from 'lucide-react';
-import polyline from '@mapbox/polyline';
+import { useSimulation } from '../hooks/useSimulation';
 
 export default function SimulatorHUD() {
-  const { 
-    isSimulating, 
-    setIsSimulating, 
+  const {
+    isSimulating,
     events,
     addEvent,
     clearEvents,
@@ -16,128 +15,25 @@ export default function SimulatorHUD() {
     setEventCause,
     timeOfDayHour,
     setTimeOfDayHour,
-    riskScore, 
-    roadClosureProb, 
-    setRiskScore, 
+    riskScore,
+    roadClosureProb,
+    setRiskScore,
     setRoadClosureProb,
     actions,
-    setActions,
     vehicleType,
     setVehicleType,
     etrMinutes,
-    setEtrMinutes,
     detourPossible,
+    setEtrMinutes,
     setDetourPossible,
+    setActions,
     setAffectedRoads,
     setSpilloverRoads,
-    setDetourRoutes
+    setDetourRoutes,
   } = useStore();
 
-  const handleSimulate = async () => {
-    if (events.length === 0) {
-      alert("Please drop at least one pin on the map first!");
-      return;
-    }
-
-    setIsSimulating(true);
-    
-    // Reset previous results
-    setRiskScore(null);
-    setRoadClosureProb(null);
-    setEtrMinutes(null);
-    setDetourPossible(null);
-    setActions([]);
-    setAffectedRoads(null);
-    setSpilloverRoads(null);
-    setDetourRoutes(null);
-
-    try {
-      const getCategoryFromHour = (h: number) => {
-        if (h >= 7 && h < 11) return 'Morning Peak';
-        if (h >= 11 && h < 16) return 'Afternoon';
-        if (h >= 16 && h < 21) return 'Evening Peak';
-        return 'Night';
-      };
-
-      const payload = {
-        events: events.map(e => ({
-          latitude: e.lat,
-          longitude: e.lng,
-          event_cause: e.cause,
-          time_of_day: getCategoryFromHour(e.timeHour),
-          vehicle_type: vehicleType
-        }))
-      };
-
-      const res = await fetch('/api/simulate_event', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!res.ok) {
-        const text = await res.text();
-        let errorMsg = 'Simulation failed';
-        try {
-          const errorData = JSON.parse(text);
-          errorMsg = typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail);
-        } catch {
-          errorMsg = text.substring(0, 50) + '...';
-        }
-        alert(`Error: ${errorMsg}`);
-        setIsSimulating(false);
-        return;
-      }
-
-      const data = await res.json();
-      
-      // Wrap raw arrays into a proper GeoJSON FeatureCollection for GeoJsonLayer
-      const toFeatureCollection = (data: any) => {
-        if (!data) return null;
-        // Already a FeatureCollection
-        if (data.type === 'FeatureCollection') return data;
-        // Raw array of feature objects from the backend
-        const features = Array.isArray(data) ? data : [];
-        return {
-          type: 'FeatureCollection',
-          features: features.map((f: any) => {
-            // Already a proper GeoJSON Feature
-            if (f.type === 'Feature') return f;
-            // Raw object with coordinates — wrap it
-            return {
-              type: 'Feature',
-              geometry: f.geometry || {
-                type: 'LineString',
-                coordinates: f.coordinates || []
-              },
-              properties: f.properties || {
-                color: f.color || [255, 50, 50, 200],
-                congestion_score: f.congestion_score || 5,
-                dynamic_congestion_score: f.dynamic_congestion_score || 5,
-                decay_factor: f.decay_factor || 1.0,
-                eventHour: f.eventHour || 12,
-                road_id: f.road_id || ''
-              }
-            };
-          })
-        };
-      };
-
-      setRiskScore(data.risk_score);
-      setRoadClosureProb(data.requires_road_closure);
-      setEtrMinutes(data.etr_minutes);
-      setDetourPossible(data.detour_possible);
-      setActions(data.recommended_actions);
-      setAffectedRoads(toFeatureCollection(data.affected_roads));
-      setSpilloverRoads(toFeatureCollection(data.spillover_roads));
-      setDetourRoutes(toFeatureCollection(data.detour_routes));
-    } catch (error) {
-      console.error(error);
-      alert("Failed to connect to ML Backend.");
-    } finally {
-      setIsSimulating(false);
-    }
-  };
+  // All fetch + data-transform logic lives in the hook — not here
+  const { handleSimulate } = useSimulation();
 
   return (
     <motion.div 
