@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-import xgboost as xgb
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import StratifiedKFold, GridSearchCV, learning_curve
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 import networkx as nx
@@ -97,9 +97,7 @@ def train_risk_model(data_path: str):
         X_train_f, X_val_f = X_arr[train_idx], X_arr[val_idx]
         y_train_f, y_val_f = y_arr[train_idx], y_arr[val_idx]
         
-        model_fold = xgb.XGBClassifier(
-            use_label_encoder=False, 
-            eval_metric='logloss', 
+        model_fold = RandomForestClassifier(
             random_state=42
         )
         model_fold.fit(X_train_f, y_train_f)
@@ -153,15 +151,10 @@ def train_risk_model(data_path: str):
         print("Triggering automated hyperparameter tuning via GridSearchCV...")
         param_grid = {
             'max_depth': [3, 5, 7],
-            'learning_rate': [0.01, 0.1, 0.3],
-            'n_estimators': [50, 100, 200],
-            'min_child_weight': [1, 3, 5],
-            'subsample': [0.8, 1.0]
+            'n_estimators': [50, 100, 200]
         }
         
-        estimator = xgb.XGBClassifier(
-            use_label_encoder=False, 
-            eval_metric='logloss', 
+        estimator = RandomForestClassifier(
             random_state=42
         )
         
@@ -180,9 +173,7 @@ def train_risk_model(data_path: str):
         final_model = grid_search.best_estimator_
     else:
         print("No underfitting or overfitting detected. Training final model on entire dataset...")
-        final_model = xgb.XGBClassifier(
-            use_label_encoder=False, 
-            eval_metric='logloss', 
+        final_model = RandomForestClassifier(
             random_state=42
         )
         final_model.fit(X_arr, y_arr)
@@ -222,7 +213,7 @@ def train_risk_model(data_path: str):
     plt.plot(train_sizes * 100, val_scores_mean, 'o-', color="g", label="Validation F1-score")
     plt.fill_between(train_sizes * 100, train_scores_mean - train_scores_std, train_scores_mean + train_scores_std, alpha=0.1, color="r")
     plt.fill_between(train_sizes * 100, val_scores_mean - val_scores_std, val_scores_mean + val_scores_std, alpha=0.1, color="g")
-    plt.title("XGBoost Learning Curves (F1-score)")
+    plt.title("RandomForest Learning Curves (F1-score)")
     plt.xlabel("Training Set Size (%)")
     plt.ylabel("F1-score")
     plt.legend(loc="best")
