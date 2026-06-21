@@ -5,7 +5,7 @@ pandas
 scikit-learn
 xgboost
 networkx
-rustworkx
+rustworkx==0.18.0
 scipy
 joblib
 numpy

@@ -28,24 +28,41 @@ kmeans_path = os.path.join(backend_dir, "kmeans_model.pkl")
 etr_path = os.path.join(backend_dir, "etr_model.pkl")
 
 if os.path.exists(model_path):
-    with open(model_path, "rb") as f:
-        model = pickle.load(f)
+    try:
+        with open(model_path, "rb") as f:
+            model = pickle.load(f)
+        print("✅ Risk model loaded")
+    except Exception as e:
+        print(f"⚠️ Could not load risk model: {e}")
+
 if os.path.exists(graph_path):
-    with open(graph_path, "rb") as f:
-        graph_data = pickle.load(f)
-        if isinstance(graph_data, dict):
-            graph = graph_data["graph"]
-            kdtree = graph_data["kdtree"]
-            node_indices = graph_data["node_indices"]
-            idx_to_node = {v: k for k, v in node_indices.items()}
-        else:
-            graph = graph_data
+    try:
+        with open(graph_path, "rb") as f:
+            graph_data = pickle.load(f)
+            if isinstance(graph_data, dict):
+                graph = graph_data["graph"]
+                kdtree = graph_data["kdtree"]
+                node_indices = graph_data["node_indices"]
+                idx_to_node = {v: k for k, v in node_indices.items()}
+        print("✅ Routing graph loaded")
+    except Exception as e:
+        print(f"⚠️ Could not load routing graph: {e}")
+
 if os.path.exists(kmeans_path):
-    with open(kmeans_path, "rb") as f:
-        kmeans_model = pickle.load(f)
+    try:
+        with open(kmeans_path, "rb") as f:
+            kmeans_model = pickle.load(f)
+        print("✅ KMeans model loaded")
+    except Exception as e:
+        print(f"⚠️ Could not load kmeans model: {e}")
+
 if os.path.exists(etr_path):
-    with open(etr_path, "rb") as f:
-        etr_model = pickle.load(f)
+    try:
+        with open(etr_path, "rb") as f:
+            etr_model = pickle.load(f)
+        print("✅ ETR model loaded")
+    except Exception as e:
+        print(f"⚠️ Could not load ETR model: {e}")
 
 app = FastAPI(title="Traffic Simulation Backend")
 
