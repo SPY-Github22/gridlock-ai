@@ -1,6 +1,6 @@
-# Gridlock AI - Bangalore Event & Traffic Simulation
+# Traffic Simulation - Bangalore Event & Traffic Simulation
 
-Gridlock AI is an interactive geospatial intelligence platform built for predicting and managing traffic impact during major events in Bangalore. It uses advanced spatial modeling, real-time data integration, and a high-performance 3D mapping interface to empower city planners and law enforcement with actionable insights.
+Traffic Simulation is an interactive geospatial intelligence platform built for predicting and managing traffic impact during major events in Bangalore. It uses advanced spatial modeling, real-time data integration, and a high-performance 3D mapping interface to empower city planners and law enforcement with actionable insights.
 
 ## Core Features
 *   **Spatial Prediction**: Predicts zones of impact along actual Bangalore roads with colored separation for easy visualization.

@@ -6,7 +6,7 @@ client = TestClient(app)
 def test_read_root():
     response = client.get("/")
     assert response.status_code == 200
-    assert response.json() == {"message": "Gridlock AI API is running"}
+    assert response.json() == {"message": "Traffic Simulation API is running"}
 
 def test_simulate_event_valid():
     payload = {

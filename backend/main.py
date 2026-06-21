@@ -28,7 +28,7 @@ if os.path.exists(kmeans_path):
     with open(kmeans_path, "rb") as f:
         kmeans_model = pickle.load(f)
 
-app = FastAPI(title="Gridlock AI Backend")
+app = FastAPI(title="Traffic Simulation Backend")
 
 app.add_middleware(
     CORSMiddleware,
@@ -82,7 +82,7 @@ def get_avg_pairwise_distance(lats, lons):
 
 @app.get("/")
 def read_root():
-    return {"message": "Gridlock AI API is running"}
+    return {"message": "Traffic Simulation API is running"}
 
 @app.post("/simulate_event", response_model=EventSimulationResponse)
 def simulate_event(request: SimulationBatchRequest):
