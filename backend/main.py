@@ -133,13 +133,15 @@ def simulate_event(request: SimulationBatchRequest):
     baseline_risk = 5.0
 
     if model:
+        event_type_map = {"Accident": 0, "Protest": 1, "Waterlogging": 2}
+        event_type_encoded = event_type_map.get(first_event.event_cause, 0)
+        
         features = np.array([[
-            concurrent_event_count,
-            avg_dist,
-            cluster_density,
             hour,
             day_of_week,
-            is_peak
+            is_peak,
+            zone_clusters[0] if zone_clusters else 0,
+            event_type_encoded
         ]])
         with joblib.parallel_backend('sequential'):
             probs = model.predict_proba(features)[0]
