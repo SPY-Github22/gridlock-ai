@@ -2,7 +2,7 @@ fastapi
 uvicorn
 pydantic
 pandas
-scikit-learn
+scikit-learn==1.9.0
 xgboost
 networkx
 rustworkx==0.18.0
