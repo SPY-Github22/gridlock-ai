@@ -8,11 +8,11 @@
 ## Milestones
 | # | Name | Scope | Dependencies | Status | Conversation ID |
 |---|------|-------|-------------|--------|-----------------|
-| E2E | E2E Testing Track | Design and implement Tier 1-4 tests | None | IN_PROGRESS | 1dc14b80-2e5b-41a0-8625-c8ff446deed6 |
-| I1 | ML Pipeline Upgrade | 5-Fold CV, tuning, learning curves, compound event features. NOTE: Git push trigger on completion. | None | IN_PROGRESS | bf886997-8def-40bf-9195-c64a9f6e75e6 |
-| I2 | "What-If" Simulation Backend | `/simulate_scenario` endpoint, compound prediction inference, routing engine, edge cases | I1 | PLANNED | TBD |
-| I3 | Frontend Map & HUD | Map drag/drop, tooltip, blast radius color, time slider, post-sim mitigations, HUD | I2 | PLANNED | TBD |
-| I4 | E2E Integration & Hardening | Final E2E pass, Tier 5 adversarial tests, Forensic Audit | E2E, I3 | PLANNED | TBD |
+| E2E | E2E Testing Track | Design and implement Tier 1-4 tests | None | DONE | 1dc14b80-2e5b-41a0-8625-c8ff446deed6 |
+| I1 | ML Pipeline Upgrade | 5-Fold CV, tuning, learning curves, compound event features. NOTE: Git push trigger on completion. | None | DONE | bf886997-8def-40bf-9195-c64a9f6e75e6 |
+| I2 | "What-If" Simulation Backend | `/simulate_scenario` endpoint, compound prediction inference, routing engine, edge cases | I1 | DONE | Merged into I4 |
+| I3 | Frontend Map & HUD | Map drag/drop, tooltip, blast radius color, time slider, post-sim mitigations, HUD | I2 | DONE | Manually completed |
+| I4 | E2E Integration & Hardening | Final E2E pass, Tier 5 adversarial tests, Forensic Audit | E2E, I3 | IN_PROGRESS | b5e94070-513b-4bec-bc25-9e4696193d7c |
 
 ## Interface Contracts
 ### Frontend ↔ Backend (`/simulate_scenario`)

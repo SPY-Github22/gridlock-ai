@@ -1,5 +1,5 @@
 ## Current Status
-Last visited: 2026-06-21T02:31:00Z
+Last visited: 2026-06-21T07:30:00Z
 
 - [x] Analyze user requirements in ORIGINAL_REQUEST.md
 - [x] Initialize plan.md and briefing.md
@@ -7,11 +7,11 @@ Last visited: 2026-06-21T02:31:00Z
 - [x] Spawn Implementation Sub-orchestrator for Milestone I1 (ML Pipeline Upgrade)
 - [ ] Spawn Implementation Sub-orchestrator for Milestone I2 ("What-If" Simulation Backend)
 - [ ] Spawn Implementation Sub-orchestrator for Milestone I3 (Frontend Interactive Map & Scenario HUD)
-- [ ] Spawn Implementation Sub-orchestrator for Milestone I4 (E2E Integration & Adversarial Hardening)
+- [x] Spawn Implementation Sub-orchestrator for Milestone I4 (E2E Integration & Adversarial Hardening)
 
 ## Iteration Status
-Current iteration: 7 / 32
-Spawn count: 2 / 16
+Current iteration: 8 / 32
+Spawn count: 3 / 16
 
 ## Retrospective Notes
 - Fresh startup. Configured Project pattern. Scheduled 10-minute heartbeat cron.
@@ -27,3 +27,6 @@ Spawn count: 2 / 16
 - Milestone I1 Worker (`2e6eb4a3-bc11-4063-b5af-695bd279f32a`) reported completion of the ML pipeline code. Instructed the Milestone I1 Sub-orchestrator to run the Reviewer, Challenger, and Forensic Auditor verification gates. Checkpoint set to block proceeding to next milestone until Git commit/push is triggered.
 - Received user feedback for Phase 2 backend (model-derived road colors based on dynamic scores, time-decay dynamic logic for scrubber timeline). Updated PROJECT.md and passed requirements to E2E Testing Orchestrator and Milestone I1 Sub-orchestrator. Heartbeat cron continues running.
 - A sixth hard reboot occurred at 2026-06-21T02:30:17Z. Heartbeat cron restarted as task 0047b8be-8301-47e3-adb3-fb4e7c4d6bbe/task-235. Revived both subagents and instructed them to revive their respective active subagents (specifically Reviewers, Challengers, Auditor, Worker 2 for Milestone I1). Incrementing iteration to 7.
+- API limits refreshed at 2026-06-21T07:25:30Z after a long cooldown. Server restarted, stopping task-235. During cooldown, Phase 1 (Frontend) was manually completed in the codebase. Project was promoted to Phase 4 (Final E2E Testing & Polish).
+- Heartbeat cron restarted as task 0047b8be-8301-47e3-adb3-fb4e7c4d6bbe/task-277. Spawned Milestone I4 Integration Sub-orchestrator (`b5e94070-513b-4bec-bc25-9e4696193d7c`) to execute E2E Integration and Adversarial Hardening. Incrementing iteration to 8.
+- Heartbeat iteration 8 check: Milestone I4 Sub-orchestrator (`b5e94070-513b-4bec-bc25-9e4696193d7c`) is actively executing. It verified the E2E tests, created its `SCOPE.md`, and spawned Worker 1 (`ae21804b-4928-4b83-8973-368f447d7413`) to implement the `/simulate_scenario` endpoint in `backend/main.py`.

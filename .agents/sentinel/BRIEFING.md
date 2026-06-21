@@ -8,8 +8,8 @@ Execute the multi-phase Gridlock Advanced ML Simulation Upgrade Plan by dispatch
 - Working directory: D:\gridlock-ai\.agents\sentinel
 - Orchestrator: 0047b8be-8301-47e3-adb3-fb4e7c4d6bbe
 - Victory Auditor: TBD
-- Cron 1 (Progress): task-234 (every 8 mins)
-- Cron 2 (Liveness): task-236 (every 10 mins)
+- Cron 1 (Progress): task-259 (every 8 mins)
+- Cron 2 (Liveness): task-261 (every 10 mins)
 
 ## 🔒 Key Constraints
 - No technical decisions — relay only

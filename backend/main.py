@@ -110,20 +110,28 @@ def simulate_event(request: SimulationBatchRequest):
     
     cluster_density = Counter(zone_clusters).most_common(1)[0][1] if zone_clusters else 0
 
-    # 4. Temporal features from the first event (all events in batch are part of same scenario)
-    first_event = request.events[0]
-    hour = 9 if first_event.time_of_day == "Morning Peak" else 15
+    # 4. Separate hazards from mitigation resources
+    hazards = [e for e in request.events if e.event_cause not in ["Barricade", "Police Squad"]]
+    mitigations = [e for e in request.events if e.event_cause in ["Barricade", "Police Squad"]]
+    
+    if not hazards:
+        # If there are only barricades/police and no actual accidents, risk is 0
+        return EventSimulationResponse(risk_score=0.0, requires_road_closure=0.0, recommended_actions=[])
+
+    # 5. Temporal features from the first hazard
+    first_event = hazards[0]
+    hour_map = {"Morning Peak": 9, "Afternoon": 13, "Evening Peak": 18, "Night": 2}
+    hour = hour_map.get(first_event.time_of_day, 12)
     day_of_week = 2
-    is_peak = 1 if first_event.time_of_day == "Morning Peak" else 0
+    is_peak = 1 if first_event.time_of_day in ["Morning Peak", "Evening Peak"] else 0
 
-    concurrent_event_count = len(request.events)
+    concurrent_event_count = len(hazards)
 
-    # 5. Predict closure probability using updated model
+    # 6. Predict baseline closure probability using updated model
     requires_road_closure = 0.5
-    risk_score = 5.0
+    baseline_risk = 5.0
 
     if model:
-        # Features ordering: ['concurrent_event_count', 'average_distance_between_events', 'cluster_density', 'hour', 'day_of_week', 'is_peak']
         features = np.array([[
             concurrent_event_count,
             avg_dist,
@@ -135,26 +143,46 @@ def simulate_event(request: SimulationBatchRequest):
         with joblib.parallel_backend('sequential'):
             probs = model.predict_proba(features)[0]
         requires_road_closure = float(probs[1])
-        risk_score = requires_road_closure * 10.0
+        baseline_risk = requires_road_closure * 10.0
 
-    # Cap risk score
-    risk_score = min(risk_score, 10.0)
+    # 7. Apply Mitigation Logic (Barricades & Police reduce risk)
+    mitigation_factor = 1.0
+    for m in mitigations:
+        if m.event_cause == "Barricade":
+            mitigation_factor *= 0.85 # 15% reduction per barricade
+        elif m.event_cause == "Police Squad":
+            mitigation_factor *= 0.90 # 10% reduction per police squad
 
-    # 6. Determine recommended actions
+    final_risk_score = baseline_risk * mitigation_factor
+    final_risk_score = min(final_risk_score, 10.0)
+    requires_road_closure = requires_road_closure * mitigation_factor
+
+    # 8. Determine recommended actions
     actions = []
-    if graph and requires_road_closure > 0.5:
-        for event in request.events:
+    
+    # If risk is still high after mitigations, recommend more
+    if final_risk_score > 6.0:
+        for event in hazards:
             actions.append(
                 RecommendedAction(
                     action_type="Barricade",
                     latitude=event.latitude + 0.001,
                     longitude=event.longitude + 0.001,
-                    description=f"Deploy barricades near {event.event_cause}. Route traffic to alternate nodes."
+                    description=f"Risk is still critical ({final_risk_score:.1f}). Deploy more barricades near the {event.event_cause} epicenter to forcefully divert traffic."
                 )
             )
+    elif mitigations:
+        actions.append(
+            RecommendedAction(
+                action_type="Success",
+                latitude=mitigations[0].latitude,
+                longitude=mitigations[0].longitude,
+                description=f"Mitigation deployed successfully. Risk reduced to {final_risk_score:.1f}. Maintain current diversion routing."
+            )
+        )
 
     return EventSimulationResponse(
-        risk_score=risk_score,
+        risk_score=final_risk_score,
         requires_road_closure=requires_road_closure,
         recommended_actions=actions
     )
