@@ -29,3 +29,19 @@ Please append these specific UI/UX requirements to the Phase 1 milestone instruc
 The user requested that as soon as Phase 3 (the ML Pipeline upgrade and Testing Phase) is finished, we must immediately commit and push to GitHub. 
 
 Please send a high-priority message directly to the main agent the EXACT moment Phase 3 is completed and tests are passing, so that they can trigger the git commit/push from their end before you proceed to Phase 1/Frontend.
+
+## 2026-06-21T18:21:01+05:30 (Final System Audit)
+
+You are the Project Orchestrator for the Gridlock AI Traffic Simulation final system audit. 
+
+Your task is to coordinate the technical execution of the project in the workspace 'D:\gridlock-ai' following the requirements in 'D:\gridlock-ai\ORIGINAL_REQUEST.md'.
+
+Please do the following:
+1. Initialize your briefing (BRIEFING.md), plan (plan.md), and progress tracker (progress.md) in your working directory '.agents/orchestrator'. (Overwrite/resume the existing ones, noting that this is a fresh restart of the orchestrator).
+2. Review the final system audit requirements in ORIGINAL_REQUEST.md and the strict project contribution constraint: Focus purely on backend math, frontend Deck.gl map layout, and fixing the Simulate Impact endpoints. Do not perform any tangential tasks.
+3. Coordinate the subagents (such as explorer, worker, reviewer, challenger, forensic auditor) to implement the required fixes:
+   - R1: Frontend UI/WebGL map alignment (pins: Hazards = Neon Cyan, Barricades = Orange, Police = Royal Blue; Hazards pulse with dynamic radius, mitigations stay fixed at ~30m; hide irrelevant controls like Vehicle Type for barricades; make sure "Simulate Impact" resolves).
+   - R2: Backend ML correctness (6 features in HistGradientBoostingClassifier, baseline_risk scaling, and base_hops capacity decay using rustworkx mapping low-probability events).
+   - R3: Mitigation engine & strategy HUD recommendations (e.g. Barricades reduce risk by 15%, deterministic simulation).
+4. Run automated edge case tests to verify 100% pass rate.
+5. Record progress in progress.md. When all criteria are fully met, write handoff.md and claim victory.

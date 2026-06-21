@@ -75,5 +75,53 @@ The user had two more crucial UX questions/requirements for the Phase 1/Backend 
 2. **Multiple Pins with Different Times:** The user wants to ensure they can place multiple pins with DIFFERENT times of day (e.g. Accident at 8 AM, Protest at 12 PM). When using the 24-hour Timeline Scrubber, the UI should dynamically "fade in/expand" the gridlock for the 8 AM pin when the scrubber hits 8 AM, and then let it fade out/reduce as the scrubber moves to 12 PM, while the Protest pin starts to expand. The backend needs to support this time-decay logic natively so the frontend can animate it!
 
 
+## Follow-up — 2026-06-21T12:29:31Z
+
+# Teamwork Project Prompt — Final System Audit
+
+> Status: Launched
+> Goal: Fix all backend/frontend misalignment, ensure mathematical correctness, and make the app production-ready.
+
+Completely audit, debug, and finalize the Gridlock AI traffic simulation dashboard. Ensure that the frontend accurately reflects the backend predictions, map WebGL visualizes risks with proper radii and distinct colors, and the ML logic accurately leverages the dataset mathematically without hanging or failing.
+
+Working directory: D:\gridlock-ai
+Integrity mode: development
+
+## Requirements
+
+### R1. Frontend UI & Rendering Fixes
+Ensure the "Simulate Impact" button correctly connects to the FastAPI backend and resolves without getting stuck in a loading state. The Deck.gl map must visually distinguish different pins by color (e.g. Hazards = Neon Cyan, Barricades = Orange, Police = Royal Blue). Hazards must pulse with a dynamic radius after simulation, while mitigations stay fixed at ~30m. Hide irrelevant UI controls (like "Vehicle Type" when deploying a barricade).
+
+### R2. Backend Mathematical & ML Correctness
+Audit `main.py` and `model_training.py` to ensure the native `HistGradientBoostingClassifier` accurately ingests all exactly 6 features. Ensure the probability scaling (`baseline_risk`) and the `rustworkx` Exponential Capacity Decay (`base_hops`) mathematically map low-probability events to a realistic minimum blast-radius impact so the user visually sees the results. 
+
+### R3. Mitigation & Strategy Engine
+Ensure the backend accurately computes the mitigation factors (e.g., Barricades reducing risk by 15%) and successfully pushes AI strategy recommendations to the frontend HUD whenever the risk score evaluates successfully. Ensure the simulation is fully deterministic and reliable for official state-force usage.
+
+## Acceptance Criteria
+
+### Verification Standards
+- [ ] Programmatic Evaluation: `pytest test_edge_cases.py` must achieve a 100% pass rate without ValueError feature mismatches or 422 Unprocessable Entity errors.
+- [ ] ML Pipeline: `model_training.py` runs cleanly without feature-name warnings and successfully saves `risk_model.pkl` and `etr_model.pkl`.
+- [ ] Frontend State: Placing a barricade beside an accident correctly decreases the `riskScore` output by the simulation endpoint, and the UI successfully renders the JSON paths on the map.
+
+
+## Follow-up — 2026-06-21T12:31:43Z
+
+The user has explicitly requested: "make sure at each and every step that whatever we do is contributing to this project." 
+Please strictly enforce this constraint. Do not perform any tangential or hallucinated tasks. Focus purely on the mathematical correctness of the ML backend, the Map layout bugs, and fixing the Simulate Impact endpoints to make it a serious, useful simulation tool for state forces.
+
+
+## Follow-up — 2026-06-21T12:54:21Z
+
+The user has added a specific UX constraint for the frontend:
+"The thing with frontend is, it can take 5-10s to load the simulation, it can show a loading sign on the screen at that time. But after it is done loading, I want the full UI and design to be interactive and visible thats the only thing. within 5 to 10s. popping up routes with colours, etc."
+
+Please ensure your WebGL and React implementations respect this expectation. The system should correctly show a loading spinner during the fetch, and the backend BFS must guarantee it completes within 10 seconds and successfully returns the GeoJSON routes so they instantly pop up with correct colors on the map.
+
+
+
+
+
 
 

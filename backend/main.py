@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-from typing import List, Optional
+from pydantic import BaseModel, Field, validator
+from typing import List, Optional, Union, Literal
 import pickle
 import numpy as np
 import pandas as pd
@@ -57,12 +57,106 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class BarricadeRequest(BaseModel):
+    latitude: float
+    longitude: float
+
+    @validator('latitude', pre=True)
+    def check_lat(cls, v):
+        if v is None or not isinstance(v, (int, float)) or isinstance(v, bool):
+            raise TypeError("Latitude must be a float or integer")
+        if not (12.7 <= float(v) <= 13.2):
+            raise ValueError("Latitude must be within Bengaluru bounds [12.7, 13.2]")
+        return float(v)
+
+    @validator('longitude', pre=True)
+    def check_lon(cls, v):
+        if v is None or not isinstance(v, (int, float)) or isinstance(v, bool):
+            raise TypeError("Longitude must be a float or integer")
+        if not (77.4 <= float(v) <= 77.8):
+            raise ValueError("Longitude must be within Bengaluru bounds [77.4, 77.8]")
+        return float(v)
+
+class CrowdRequest(BaseModel):
+    latitude: float
+    longitude: float
+    density: float
+
+    @validator('latitude', pre=True)
+    def check_lat(cls, v):
+        if v is None or not isinstance(v, (int, float)) or isinstance(v, bool):
+            raise TypeError("Latitude must be a float or integer")
+        if not (12.7 <= float(v) <= 13.2):
+            raise ValueError("Latitude must be within Bengaluru bounds [12.7, 13.2]")
+        return float(v)
+
+    @validator('longitude', pre=True)
+    def check_lon(cls, v):
+        if v is None or not isinstance(v, (int, float)) or isinstance(v, bool):
+            raise TypeError("Longitude must be a float or integer")
+        if not (77.4 <= float(v) <= 77.8):
+            raise ValueError("Longitude must be within Bengaluru bounds [77.4, 77.8]")
+        return float(v)
+
+    @validator('density', pre=True)
+    def check_density(cls, v):
+        if v is None or not isinstance(v, (int, float)) or isinstance(v, bool):
+            raise TypeError("Density must be a float or integer")
+        if not (0.0 <= float(v) <= 1.0):
+            raise ValueError("Density must be between 0.0 and 1.0")
+        return float(v)
+
+class ScenarioEventRequest(BaseModel):
+    latitude: float
+    longitude: float
+    event_cause: Literal['Accident', 'Vehicle Breakdown', 'Protest / Rally', 'Waterlogging']
+    time_of_day: Literal['Morning Peak', 'Evening Peak', 'Off-Peak', 'Afternoon', 'Night']
+    vehicle_type: str = Field(default="Car/Taxi")
+
+    @validator('latitude', pre=True)
+    def check_lat(cls, v):
+        if v is None or not isinstance(v, (int, float)) or isinstance(v, bool):
+            raise TypeError("Latitude must be a float or integer")
+        if not (12.7 <= float(v) <= 13.2):
+            raise ValueError("Latitude must be within Bengaluru bounds [12.7, 13.2]")
+        return float(v)
+
+    @validator('longitude', pre=True)
+    def check_lon(cls, v):
+        if v is None or not isinstance(v, (int, float)) or isinstance(v, bool):
+            raise TypeError("Longitude must be a float or integer")
+        if not (77.4 <= float(v) <= 77.8):
+            raise ValueError("Longitude must be within Bengaluru bounds [77.4, 77.8]")
+        return float(v)
+
+class SimulateScenarioRequest(BaseModel):
+    scenario_mode: Literal['Baseline', 'Future Impact', 'Optimized Strategy']
+    barricades: List[BarricadeRequest]
+    crowds: List[CrowdRequest]
+    events: List[ScenarioEventRequest]
+
 class EventSimulationRequest(BaseModel):
     latitude: float = Field(..., description="Latitude of the event")
     longitude: float = Field(..., description="Longitude of the event")
-    event_cause: str = Field(..., description="Cause of the event (e.g., Accident, Protest)")
-    time_of_day: str = Field(..., description="Time of the event (e.g., Morning Peak)")
+    event_cause: Literal['Accident', 'Vehicle Breakdown', 'Protest / Rally', 'Waterlogging', 'Barricade', 'Police Squad'] = Field(..., description="Cause of the event")
+    time_of_day: Literal['Morning Peak', 'Evening Peak', 'Off-Peak', 'Afternoon', 'Night'] = Field(..., description="Time of the event")
     vehicle_type: str = Field(default="Car/Taxi", description="Type of vehicle involved")
+
+    @validator('latitude', pre=True)
+    def check_lat(cls, v):
+        if v is None or not isinstance(v, (int, float)) or isinstance(v, bool):
+            raise TypeError("Latitude must be a float or integer")
+        if not (12.7 <= float(v) <= 13.2):
+            raise ValueError("Latitude must be within Bengaluru bounds [12.7, 13.2]")
+        return float(v)
+
+    @validator('longitude', pre=True)
+    def check_lon(cls, v):
+        if v is None or not isinstance(v, (int, float)) or isinstance(v, bool):
+            raise TypeError("Longitude must be a float or integer")
+        if not (77.4 <= float(v) <= 77.8):
+            raise ValueError("Longitude must be within Bengaluru bounds [77.4, 77.8]")
+        return float(v)
 
 class SimulationBatchRequest(BaseModel):
     events: List[EventSimulationRequest]
@@ -78,10 +172,25 @@ class EventSimulationResponse(BaseModel):
     requires_road_closure: float = Field(..., description="Probability of road closure 0.0-1.0")
     etr_minutes: Optional[float] = Field(None, description="Estimated Time to Resolve in minutes")
     recommended_actions: List[RecommendedAction]
-    affected_roads: dict = Field(default_factory=lambda: {"type": "FeatureCollection", "features": []})
-    spillover_roads: dict = Field(default_factory=lambda: {"type": "FeatureCollection", "features": []})
-    detour_routes: dict = Field(default_factory=lambda: {"type": "FeatureCollection", "features": []})
+    affected_roads: Union[dict, List[dict]] = Field(default_factory=list)
+    spillover_roads: Union[dict, List[dict]] = Field(default_factory=list)
+    detour_routes: Union[dict, List[dict]] = Field(default_factory=list)
     detour_possible: bool = Field(True, description="False if barricade blocked a chokepoint")
+
+class HazardItem:
+    def __init__(self, latitude: float, longitude: float, event_cause: str, time_of_day: str, vehicle_type: str = "Car/Taxi"):
+        self.latitude = latitude
+        self.longitude = longitude
+        self.event_cause = event_cause
+        self.time_of_day = time_of_day
+        self.vehicle_type = vehicle_type
+        self.density = None
+
+class MitigationItem:
+    def __init__(self, latitude: float, longitude: float, event_cause: str):
+        self.latitude = latitude
+        self.longitude = longitude
+        self.event_cause = event_cause
 
 def haversine_distance(lat1, lon1, lat2, lon2):
     r = 6371.0  # Earth's radius in km
@@ -104,62 +213,67 @@ def get_avg_pairwise_distance(lats, lons):
             count += 1
     return total_dist / count if count > 0 else 0.0
 
-@app.get("/")
-def read_root():
-    return {"message": "Traffic Simulation API is running"}
+def get_road_coordinates(edge_data, n1, n2):
+    import polyline
+    if edge_data and 'polyline' in edge_data:
+        coords = polyline.decode(edge_data['polyline'])
+        return [[pt[1], pt[0]] for pt in coords]
+    else:
+        return [[n1['lon'], n1['lat']], [n2['lon'], n2['lat']]]
 
-@app.post("/simulate_event", response_model=EventSimulationResponse)
-def simulate_event(request: SimulationBatchRequest):
-    if not request.events:
-        raise HTTPException(status_code=400, detail="No events provided")
+def run_simulation_logic(hazards: List[HazardItem], mitigations: List[MitigationItem]) -> EventSimulationResponse:
+    if not hazards:
+        # If there are no hazards but there are mitigations (e.g. barricades),
+        # we should still generate recommended actions for the barricades.
+        actions = []
+        for m in mitigations:
+            if m.event_cause == "Barricade":
+                actions.append(
+                    RecommendedAction(
+                        action_type="Barricade",
+                        latitude=m.latitude,
+                        longitude=m.longitude,
+                        description=f"Deploy barricade at ({m.latitude:.4f}, {m.longitude:.4f}) to redirect traffic onto alternative routes."
+                    )
+                )
+        return EventSimulationResponse(
+            risk_score=1.0,
+            requires_road_closure=0.0,
+            recommended_actions=actions,
+            affected_roads=[],
+            spillover_roads=[],
+            detour_routes=[],
+            detour_possible=True
+        )
 
-    # 1. Validate bounds (Rough bounding box for Bengaluru)
-    for event in request.events:
-        if not (12.7 < event.latitude < 13.2 and 77.4 < event.longitude < 77.8):
-            raise HTTPException(status_code=422, detail="Coordinates are out of bounds")
+    # 1. Temporal features from the first hazard
+    first_event = hazards[0]
+    hour_map = {"Morning Peak": 9, "Afternoon": 13, "Evening Peak": 18, "Night": 2, "Off-Peak": 12}
+    hour = hour_map.get(first_event.time_of_day, 12)
+    day_of_week = 2
+    is_peak = 1 if first_event.time_of_day in ["Morning Peak", "Evening Peak"] else 0
+    concurrent_event_count = len(hazards)
 
     # 2. Extract lats and lons to calculate average distance
-    lats = [event.latitude for event in request.events]
-    lons = [event.longitude for event in request.events]
+    lats = [event.latitude for event in hazards]
+    lons = [event.longitude for event in hazards]
     avg_dist = get_avg_pairwise_distance(lats, lons)
 
     # 3. Predict zone_cluster for each event and calculate cluster density
-    from collections import Counter
     zone_clusters = []
-    for event in request.events:
+    for event in hazards:
         if kmeans_model:
             cluster = int(kmeans_model.predict([[event.latitude, event.longitude]])[0])
         else:
             cluster = (int(event.latitude * 1000) ^ int(event.longitude * 1000)) % 10
         zone_clusters.append(cluster)
     
+    from collections import Counter
     cluster_density = Counter(zone_clusters).most_common(1)[0][1] if zone_clusters else 0
 
-    # 4. Separate hazards from mitigation resources
-    hazards = [e for e in request.events if e.event_cause not in ["Barricade", "Police Squad"]]
-    mitigations = [e for e in request.events if e.event_cause in ["Barricade", "Police Squad"]]
-    
-    if not hazards:
-        # If there are only barricades/police and no actual accidents, risk is 0
-        return EventSimulationResponse(risk_score=0.0, requires_road_closure=0.0, recommended_actions=[])
-
-    # 5. Temporal features from the first hazard
-    first_event = hazards[0]
-    hour_map = {"Morning Peak": 9, "Afternoon": 13, "Evening Peak": 18, "Night": 2}
-    hour = hour_map.get(first_event.time_of_day, 12)
-    day_of_week = 2
-    is_peak = 1 if first_event.time_of_day in ["Morning Peak", "Evening Peak"] else 0
-
-    concurrent_event_count = len(hazards)
-
-    # 6. Predict baseline closure probability using updated model
+    # 4. Predict baseline closure probability using model
     requires_road_closure = 0.5
-    baseline_risk = 5.0
-
     if model:
-        event_type_map = {"Accident": 0, "Protest": 1, "Waterlogging": 2}
-        event_type_encoded = event_type_map.get(first_event.event_cause, 0)
-        
         features = np.array([[
             concurrent_event_count,
             avg_dist,
@@ -171,22 +285,36 @@ def simulate_event(request: SimulationBatchRequest):
         with joblib.parallel_backend('sequential'):
             probs = model.predict_proba(features)[0]
         requires_road_closure = float(probs[1])
-        # Scale probability so that placing a manual event always generates a noticeable blast radius
-        baseline_risk = min(10.0, (requires_road_closure * 50.0) + 4.0)
+    
+    baseline_risk = min(10.0, (requires_road_closure * 50.0) + 4.0)
+    baseline_risk = max(1.0, baseline_risk)
 
-    # 7. Apply Mitigation Logic (Barricades & Police reduce risk)
-    mitigation_factor = 1.0
-    for m in mitigations:
-        if m.event_cause == "Barricade":
-            mitigation_factor *= 0.85 # 15% reduction per barricade
-        elif m.event_cause == "Police Squad":
-            mitigation_factor *= 0.90 # 10% reduction per police squad
+    # 5. Apply Mitigation Logic
+    hazard_factors = []
+    for h in hazards:
+        factor = 1.0
+        for m in mitigations:
+            dist = haversine_distance(h.latitude, h.longitude, m.latitude, m.longitude)
+            if dist <= 5.0:
+                if m.event_cause == "Barricade":
+                    factor *= 0.85
+                elif m.event_cause == "Police Squad":
+                    factor *= 0.90
+        hazard_factors.append(factor)
+        
+    avg_mitigation_factor = np.mean(hazard_factors) if hazard_factors else 1.0
+    final_risk_score = baseline_risk * avg_mitigation_factor
+    
+    # Scale risk score based on crowd densities if any
+    crowd_densities = [h.density for h in hazards if hasattr(h, 'density') and h.density is not None]
+    if crowd_densities:
+        avg_density = np.mean(crowd_densities)
+        final_risk_score *= (0.7 + 0.6 * avg_density)
+        
+    final_risk_score = max(1.0, min(final_risk_score, 10.0))
+    requires_road_closure = requires_road_closure * avg_mitigation_factor
 
-    final_risk_score = baseline_risk * mitigation_factor
-    final_risk_score = min(final_risk_score, 10.0)
-    requires_road_closure = requires_road_closure * mitigation_factor
-
-    # 8. ETR Prediction
+    # 6. ETR Prediction
     etr_minutes = None
     if etr_model and hazards:
         etr_features = pd.DataFrame([{
@@ -196,59 +324,48 @@ def simulate_event(request: SimulationBatchRequest):
             'zone_cluster': zone_clusters[0] if zone_clusters else 0
         }])
         etr_pred = etr_model.predict(etr_features)[0]
-        etr_pred = max(etr_pred * mitigation_factor, 1.0)
+        etr_pred = max(etr_pred * avg_mitigation_factor, 1.0)
         etr_minutes = round(etr_pred, 1)
 
-    # 9. Dynamic Mitigation Strategies & Actions
+    # 7. Recommended Actions
     actions = []
-    
-    if final_risk_score >= 1.0:
-        for event in hazards:
-            # Dynamic Strategy Proposals
-            actions.append(
-                RecommendedAction(
-                    action_type="Strategy A (Aggressive)",
-                    latitude=event.latitude + 0.001,
-                    longitude=event.longitude + 0.001,
-                    description=f"Deploy 4 Police Squads from nearest precinct. Drops ETR to ~{(etr_minutes*0.4 if etr_minutes else 30):.0f} mins. High cost."
-                )
-            )
-            actions.append(
-                RecommendedAction(
-                    action_type="Strategy B (Passive)",
-                    latitude=event.latitude - 0.001,
-                    longitude=event.longitude - 0.001,
-                    description=f"Deploy 1 Barricade. Risk mitigates slightly. Low resource cost."
-                )
-            )
-    elif mitigations:
+    for event in hazards:
         actions.append(
             RecommendedAction(
-                action_type="Success",
-                latitude=mitigations[0].latitude,
-                longitude=mitigations[0].longitude,
-                description=f"Mitigation deployed. Risk reduced to {final_risk_score:.1f}."
+                action_type="Strategy A (Aggressive)",
+                latitude=event.latitude + 0.001,
+                longitude=event.longitude + 0.001,
+                description=f"Deploy 4 Police Squads from nearest precinct due to {event.event_cause}. Drops ETR to ~{(etr_minutes*0.4 if etr_minutes else 30):.0f} mins. High cost."
+            )
+        )
+        actions.append(
+            RecommendedAction(
+                action_type="Strategy B (Passive)",
+                latitude=event.latitude - 0.001,
+                longitude=event.longitude - 0.001,
+                description=f"Deploy 1 Barricade due to {event.event_cause}. Risk mitigates slightly. Low resource cost."
             )
         )
 
-    # 10. Advanced Spatial Algorithms (Rustworkx)
-    affected_roads_geojson = {"type": "FeatureCollection", "features": []}
-    spillover_roads_geojson = {"type": "FeatureCollection", "features": []}
-    detour_routes_geojson = {"type": "FeatureCollection", "features": []}
-    detour_possible = True
+    # 8. Spatial affected roads (BFS in rustworkx)
+    affected_roads_dict = {}
+    spillover_roads_dict = {}
+    import math
     
     if graph and isinstance(graph, rx.PyDiGraph) and kdtree and hazards and final_risk_score > 0:
-        base_hops = int(final_risk_score * 2)
+        base_hops = max(2, int(final_risk_score * 2))
         
+        barricaded_nodes = set()
+        for m in mitigations:
+            if m.event_cause == "Barricade":
+                _, m_idx = kdtree.query([m.latitude, m.longitude])
+                barricaded_nodes.add(int(m_idx))
+                
         for event in hazards:
             try:
-                # O(log N) Nearest Node Snapping via KDTree
                 dist, nearest_idx = kdtree.query([event.latitude, event.longitude])
-                # The index from KDTree corresponds to the node indices if ordered. 
-                # Let's assume KDTree was built with same order as `graph.nodes()`.
                 nearest_node = nearest_idx
                 
-                # BFS Traversal for Blast Radius
                 visited_nodes = {nearest_node: 0}
                 queue = [(nearest_node, 0)]
                 
@@ -258,104 +375,252 @@ def simulate_event(request: SimulationBatchRequest):
                         continue
                         
                     for edge_idx in graph.out_edges(current_node):
-                        # In rustworkx: out_edges returns (source, target, data)
                         source, neighbor, edge_data = edge_idx
                         
+                        if neighbor in barricaded_nodes or source in barricaded_nodes:
+                            continue
+                            
                         highway_type = edge_data.get('highway', 'residential')
                         
-                        # Exponential Capacity Decay Parameters
                         base_cost = 1.0
-                        decay_factor = 1.5 # Residential streets clog up exponentially fast
-                        
+                        decay_factor = 1.5
                         if highway_type in ['primary', 'trunk', 'motorway']:
                             base_cost = 0.3
-                            decay_factor = 1.1 # Massive arteries absorb traffic much further
+                            decay_factor = 1.1
                         elif highway_type in ['secondary', 'tertiary']:
                             base_cost = 0.6
                             decay_factor = 1.2
                             
-                        # Exponential decay: hop cost increases exponentially the further out we get
                         hop_cost = base_cost * (decay_factor ** depth)
-                        
                         new_depth = depth + hop_cost
                         
                         if neighbor not in visited_nodes or new_depth < visited_nodes[neighbor]:
                             visited_nodes[neighbor] = new_depth
-                            queue.append((neighbor, new_depth))
+                            queue.append((neighbor, int(depth) + 1))
                             
-                            ratio = depth / float(base_hops)
-                            color = [255, 50, 50, 200] if ratio < 0.33 else ([255, 165, 0, 180] if ratio < 0.66 else [50, 255, 50, 150])
-                            
-                            # Draw feature
                             n1 = graph.get_node_data(current_node)
                             n2 = graph.get_node_data(neighbor)
+                            road_coords = get_road_coordinates(edge_data, n1, n2)
                             
-                            # Determine if this is Spillover (residential hit by high depth)
-                            if hop_cost == 1 and new_depth > 3:
-                                target_geojson = spillover_roads_geojson
-                                color = [160, 32, 240, 200] # Purple for spillover
-                            else:
-                                target_geojson = affected_roads_geojson
+                            avg_lon = sum(pt[0] for pt in road_coords) / len(road_coords)
+                            avg_lat = sum(pt[1] for pt in road_coords) / len(road_coords)
+                            
+                            min_dist = float('inf')
+                            for h in hazards:
+                                h_dist = math.sqrt((avg_lat - h.latitude)**2 + (avg_lon - h.longitude)**2)
+                                if h_dist < min_dist:
+                                    min_dist = h_dist
+                                    
+                            congestion_score = max(1.0, min(10.0, final_risk_score - (min_dist * 20.0)))
+                            
+                            color = [50, 205, 50, 150]
+                            if congestion_score >= 7.0:
+                                color = [180, 0, 0, 220]
+                            elif congestion_score >= 5.0:
+                                color = [255, 69, 0, 200]
+                            elif congestion_score >= 3.0:
+                                color = [255, 165, 0, 180]
                                 
-                            if 'polyline' in edge_data:
-                                target_geojson["features"].append({
-                                    "type": "Feature",
-                                    "properties": {"color": color, "eventHour": hour_map.get(event.time_of_day, 12), "polyline": edge_data['polyline']}
-                                })
-                            else:
-                                target_geojson["features"].append({
-                                    "type": "Feature",
-                                    "geometry": {"type": "LineString", "coordinates": [[n1['lat'], n1['lon']], [n2['lat'], n2['lon']]]},
-                                    "properties": {"color": color, "eventHour": hour_map.get(event.time_of_day, 12)}
-                                })
+                            road_id = f"{current_node}_{neighbor}"
                             
+                            mixed_dict = {
+                                "road_id": road_id,
+                                "coordinates": road_coords,
+                                "congestion_score": congestion_score,
+                                "dynamic_congestion_score": congestion_score,
+                                "decay_factor": float(decay_factor),
+                                "type": "Feature",
+                                "geometry": {
+                                    "type": "LineString",
+                                    "coordinates": road_coords
+                                },
+                                "properties": {
+                                    "color": color,
+                                    "congestion_score": congestion_score,
+                                    "road_id": road_id,
+                                    "dynamic_congestion_score": congestion_score,
+                                    "decay_factor": float(decay_factor),
+                                    "eventHour": hour
+                                }
+                            }
+                            
+                            if base_cost == 1.0 and new_depth > 3:
+                                mixed_dict["properties"]["color"] = [160, 32, 240, 200]
+                                if road_id not in spillover_roads_dict or congestion_score > spillover_roads_dict[road_id]["congestion_score"]:
+                                    spillover_roads_dict[road_id] = mixed_dict
+                            else:
+                                if road_id not in affected_roads_dict or congestion_score > affected_roads_dict[road_id]["congestion_score"]:
+                                    affected_roads_dict[road_id] = mixed_dict
             except Exception as e:
-                print(f"Error in rx blast radius: {e}")
+                print(f"Error in spatial analysis: {e}")
+
+    # 9. Detour Routing Mapping
+    detour_routes_list = []
+    detour_possible = True
+    if mitigations:
+        try:
+            temp_graph = graph.copy()
+            hazard_nodes = set()
+            for h in hazards:
+                dist, h_idx = kdtree.query([h.latitude, h.longitude])
+                hazard_nodes.add(int(h_idx))
                 
-        # Detour Mapping: Sever Barricade Nodes
-        if mitigations:
-            try:
-                temp_graph = graph.copy()
-                for m in mitigations:
-                    dist, m_idx = kdtree.query([m.latitude, m.longitude])
-                    temp_graph.remove_node(m_idx)
-                
-                # Dijkstra Shortest Path from Hazard to a random far node
-                h_dist, h_idx = kdtree.query([hazards[0].latitude, hazards[0].longitude])
-                target_idx = (h_idx + 2) % temp_graph.num_nodes() # Mock target
-                
-                paths = rx.dijkstra_shortest_paths(temp_graph, source=h_idx, target=target_idx, weight_fn=lambda e: e.get('weight', 1.0))
-                
-                if not paths or target_idx not in paths:
-                    raise Exception("NoPath")
-                    
-                path = paths[target_idx]
-                for i in range(len(path) - 1):
-                    edge_data_detour = temp_graph.get_edge_data(path[i], path[i+1])
-                    if edge_data_detour and 'polyline' in edge_data_detour:
-                        detour_routes_geojson["features"].append({
-                            "type": "Feature",
-                            "properties": {"color": [0, 255, 127, 255], "polyline": edge_data_detour['polyline']}
-                        })
-                    else:
-                        n1 = graph.get_node_data(path[i])
-                        n2 = graph.get_node_data(path[i+1])
-                        detour_routes_geojson["features"].append({
-                            "type": "Feature",
-                            "geometry": {"type": "LineString", "coordinates": [[n1['lat'], n1['lon']], [n2['lat'], n2['lon']]]},
-                            "properties": {"color": [0, 255, 127, 255]} # Bright Spring Green
-                        })
-            except Exception as e:
-                print(f"Detour Exception: {e}")
+            for m in mitigations:
+                dist, m_idx = kdtree.query([m.latitude, m.longitude])
+                m_idx = int(m_idx)
+                if m_idx not in hazard_nodes:
+                    if temp_graph.has_node(m_idx):
+                        temp_graph.remove_node(m_idx)
+                        
+            first_hazard_idx = int(kdtree.query([hazards[0].latitude, hazards[0].longitude])[1])
+            if not temp_graph.has_node(first_hazard_idx):
                 detour_possible = False
                 
+            if detour_possible:
+                valid_nodes = list(temp_graph.node_indices())
+                if not valid_nodes:
+                    detour_possible = False
+                else:
+                    target_idx = None
+                    for idx in valid_nodes:
+                        if idx != first_hazard_idx:
+                            target_idx = idx
+                            break
+                    if target_idx is None:
+                        target_idx = first_hazard_idx
+                        
+                    paths = rx.dijkstra_shortest_paths(temp_graph, source=first_hazard_idx, target=target_idx, weight_fn=lambda e: e.get('weight', 1.0))
+                    
+                    if not paths or target_idx not in paths:
+                        raise Exception("NoPath")
+                        
+                    path = paths[target_idx]
+                    for i in range(len(path) - 1):
+                        u = path[i]
+                        v = path[i+1]
+                        edge_data_detour = temp_graph.get_edge_data(u, v)
+                        n1 = temp_graph.get_node_data(u)
+                        n2 = temp_graph.get_node_data(v)
+                        road_coords = get_road_coordinates(edge_data_detour, n1, n2)
+                        
+                        road_id = f"{u}_{v}"
+                        mixed_dict = {
+                            "road_id": road_id,
+                            "coordinates": road_coords,
+                            "congestion_score": 1.0,
+                            "dynamic_congestion_score": 1.0,
+                            "decay_factor": 1.0,
+                            "type": "Feature",
+                            "geometry": {
+                                "type": "LineString",
+                                "coordinates": road_coords
+                            },
+                            "properties": {
+                                "color": [0, 255, 127, 255],
+                                "congestion_score": 1.0,
+                                "road_id": road_id,
+                                "dynamic_congestion_score": 1.0,
+                                "decay_factor": 1.0,
+                                "eventHour": hour
+                            }
+                        }
+                        detour_routes_list.append(mixed_dict)
+        except Exception as e:
+            print(f"Detour Exception: {e}")
+            detour_possible = False
+
     return EventSimulationResponse(
         risk_score=final_risk_score,
         requires_road_closure=requires_road_closure,
         etr_minutes=etr_minutes,
         recommended_actions=actions,
-        affected_roads=affected_roads_geojson,
-        spillover_roads=spillover_roads_geojson,
-        detour_routes=detour_routes_geojson,
+        affected_roads=list(affected_roads_dict.values()),
+        spillover_roads=list(spillover_roads_dict.values()),
+        detour_routes=detour_routes_list,
         detour_possible=detour_possible
     )
+
+@app.get("/")
+def read_root():
+    return {"message": "Traffic Simulation API is running"}
+
+@app.post("/simulate_event", response_model=EventSimulationResponse)
+def simulate_event(request: SimulationBatchRequest):
+    if not request.events:
+        raise HTTPException(status_code=400, detail="No events provided")
+
+    # Separate hazards and mitigations
+    hazards = []
+    mitigations = []
+    for e in request.events:
+        if e.event_cause in ["Barricade", "Police Squad"]:
+            mitigations.append(
+                MitigationItem(
+                    latitude=e.latitude,
+                    longitude=e.longitude,
+                    event_cause=e.event_cause
+                )
+            )
+        else:
+            hazards.append(
+                HazardItem(
+                    latitude=e.latitude,
+                    longitude=e.longitude,
+                    event_cause=e.event_cause,
+                    time_of_day=e.time_of_day,
+                    vehicle_type=e.vehicle_type
+                )
+            )
+            
+    return run_simulation_logic(hazards, mitigations)
+
+@app.post("/simulate_scenario", response_model=EventSimulationResponse)
+def simulate_scenario(request: SimulateScenarioRequest):
+    # Separate hazards and mitigations based on scenario_mode
+    # 'Baseline': Hazards are only 'events'. Mitigations are empty.
+    # 'Future Impact': Hazards are 'events' + 'crowds'. Mitigations are empty.
+    # 'Optimized Strategy': Hazards are 'events' + 'crowds'. Mitigations are 'barricades' + event barricades/police.
+    
+    first_tod = request.events[0].time_of_day if request.events else "Morning Peak"
+    
+    hazards = []
+    mitigations = []
+    
+    # 1. Base events hazards
+    for e in request.events:
+        hazards.append(
+            HazardItem(
+                latitude=e.latitude,
+                longitude=e.longitude,
+                event_cause=e.event_cause,
+                time_of_day=e.time_of_day,
+                vehicle_type=e.vehicle_type
+            )
+        )
+        
+    # 2. Crowds (as hazards under Future Impact & Optimized Strategy)
+    if request.scenario_mode in ['Future Impact', 'Optimized Strategy']:
+        for c in request.crowds:
+            item = HazardItem(
+                latitude=c.latitude,
+                longitude=c.longitude,
+                event_cause='Protest / Rally',
+                time_of_day=first_tod,
+                vehicle_type='Car/Taxi'
+            )
+            item.density = c.density
+            hazards.append(item)
+            
+    # 3. Barricades (as mitigations under Optimized Strategy)
+    if request.scenario_mode == 'Optimized Strategy':
+        for b in request.barricades:
+            mitigations.append(
+                MitigationItem(
+                    latitude=b.latitude,
+                    longitude=b.longitude,
+                    event_cause='Barricade'
+                )
+            )
+            
+    return run_simulation_logic(hazards, mitigations)
+
