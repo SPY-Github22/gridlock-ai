@@ -13,4 +13,6 @@ pytest
 pytest-asyncio
 matplotlib
 polyline
+osmnx
+
 
