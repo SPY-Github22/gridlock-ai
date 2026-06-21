@@ -112,18 +112,19 @@ export default function GeospatialMap() {
           filled: false,
           lineWidthMinPixels: 2,
           getLineColor: (f: any) => {
-            const baseColor = f.properties.color || [255, 50, 50, 200];
-            const eventHour = f.properties.eventHour || 12;
+            const baseColor = f.properties.color || [255, 50, 50, 220];
+            // eventHour from properties; if missing, use current scrubber so lines are always visible
+            const eventHour = f.properties.eventHour ?? timeOfDayHour;
             const timeDiff = Math.abs(timeOfDayHour - eventHour);
-            const decayFactor = Math.max(0, 1 - (timeDiff * 0.2)); // Fades out if Scrubber is >5 hours away
-            // Apply decay to alpha channel
-            return [baseColor[0], baseColor[1], baseColor[2], baseColor[3] * decayFactor];
+            // Only fade if scrubber is >8 hours away (much more forgiving)
+            const decayFactor = Math.max(0.15, 1 - (timeDiff * 0.1));
+            return [baseColor[0], baseColor[1], baseColor[2], Math.round((baseColor[3] ?? 220) * decayFactor)];
           },
           getLineWidth: (f: any) => {
-            const eventHour = f.properties.eventHour || 12;
+            const eventHour = f.properties.eventHour ?? timeOfDayHour;
             const timeDiff = Math.abs(timeOfDayHour - eventHour);
-            const decayFactor = Math.max(0, 1 - (timeDiff * 0.2));
-            return 6 * decayFactor;
+            const decayFactor = Math.max(0.3, 1 - (timeDiff * 0.1));
+            return 10 * decayFactor; // Wider lines so they are clearly visible
           },
           pickable: true,
           updateTriggers: {
@@ -148,17 +149,17 @@ export default function GeospatialMap() {
           filled: false,
           lineWidthMinPixels: 2,
           getLineColor: (f: any) => {
-            const baseColor = f.properties.color || [160, 32, 240, 200];
-            const eventHour = f.properties.eventHour || 12;
+            const baseColor = f.properties.color || [160, 32, 240, 220];
+            const eventHour = f.properties.eventHour ?? timeOfDayHour;
             const timeDiff = Math.abs(timeOfDayHour - eventHour);
-            const decayFactor = Math.max(0, 1 - (timeDiff * 0.2));
-            return [baseColor[0], baseColor[1], baseColor[2], baseColor[3] * decayFactor];
+            const decayFactor = Math.max(0.15, 1 - (timeDiff * 0.1));
+            return [baseColor[0], baseColor[1], baseColor[2], Math.round((baseColor[3] ?? 220) * decayFactor)];
           },
           getLineWidth: (f: any) => {
-            const eventHour = f.properties.eventHour || 12;
+            const eventHour = f.properties.eventHour ?? timeOfDayHour;
             const timeDiff = Math.abs(timeOfDayHour - eventHour);
-            const decayFactor = Math.max(0, 1 - (timeDiff * 0.2));
-            return 4 * decayFactor;
+            const decayFactor = Math.max(0.3, 1 - (timeDiff * 0.1));
+            return 8 * decayFactor;
           },
           pickable: true,
           updateTriggers: {
