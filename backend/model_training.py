@@ -2,11 +2,14 @@ import pandas as pd
 import numpy as np
 import xgboost as xgb
 from sklearn.model_selection import StratifiedKFold, GridSearchCV, learning_curve
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
-import networkx as nx
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, mean_absolute_error
+from sklearn.ensemble import RandomForestRegressor
+import rustworkx as rx
+from scipy.spatial import KDTree
 import pickle
 import os
 import sys
+import polyline
 
 # Ensure backend directory is in sys.path
 backend_dir = os.path.dirname(os.path.abspath(__file__))
@@ -233,31 +236,78 @@ def train_risk_model(data_path: str):
     plt.close()
     print(f"Learning curves saved to {plot_path}")
 
+def train_etr_model(data_path: str):
+    print("Training ETR (Estimated Time to Resolve) model...")
+    df = pd.read_csv(data_path)
+    
+    # Features for ETR
+    # We will use hour, day_of_week, is_peak, and zone_cluster
+    df = df.dropna(subset=['duration_minutes', 'hour', 'day_of_week', 'is_peak', 'zone_cluster'])
+    
+    features = ['hour', 'day_of_week', 'is_peak', 'zone_cluster']
+    X = df[features]
+    y = df['duration_minutes']
+    
+    etr_model = RandomForestRegressor(n_estimators=100, max_depth=10, random_state=42)
+    etr_model.fit(X, y)
+    
+    preds = etr_model.predict(X)
+    mae = mean_absolute_error(y, preds)
+    print(f"ETR Model trained. Training MAE: {mae:.2f} minutes")
+    
+    model_save_path = os.path.join(backend_dir, "etr_model.pkl")
+    with open(model_save_path, "wb") as f:
+        pickle.dump(etr_model, f)
+    print(f"ETR model saved to {model_save_path}")
+
 def build_mock_routing_graph():
     """
-    Builds a basic NetworkX graph simulating key traffic nodes in Bengaluru.
-    We will use this to simulate dynamic diversions.
+    Builds a basic rustworkx graph simulating key traffic nodes in Bengaluru.
+    Also builds a KDTree for sub-1ms node snapping.
     """
-    G = nx.DiGraph()
+    G = rx.PyDiGraph()
     # Mock nodes with coordinates
-    nodes = {
-        "Junction_A": (12.9716, 77.5946),
-        "Junction_B": (12.9720, 77.5950),
-        "Junction_C": (12.9710, 77.5940),
-        "Junction_D": (12.9730, 77.5960)
-    }
-    for node, coords in nodes.items():
-        G.add_node(node, pos=coords)
+    nodes_info = [
+        {"id": "Junction_A", "lat": 12.9716, "lon": 77.5946},
+        {"id": "Junction_B", "lat": 12.9720, "lon": 77.5950},
+        {"id": "Junction_C", "lat": 12.9710, "lon": 77.5940},
+        {"id": "Junction_D", "lat": 12.9730, "lon": 77.5960}
+    ]
+    
+    node_indices = {}
+    coords_list = []
+    
+    for n in nodes_info:
+        idx = G.add_node(n)
+        node_indices[n["id"]] = idx
+        coords_list.append([n["lat"], n["lon"]])
         
-    G.add_edge("Junction_A", "Junction_B", weight=5.0)
-    G.add_edge("Junction_A", "Junction_C", weight=3.0)
-    G.add_edge("Junction_B", "Junction_D", weight=4.0)
-    G.add_edge("Junction_C", "Junction_D", weight=8.0)
+    # Build polyline geometries (simulating physical road curves between intersections)
+    def make_curve(n1, n2, intermediate_points=3):
+        lats = np.linspace(n1["lat"], n2["lat"], intermediate_points + 2)
+        lons = np.linspace(n1["lon"], n2["lon"], intermediate_points + 2)
+        # Add a slight "curve" offset
+        lats[1:-1] += 0.0002
+        lons[1:-1] -= 0.0001
+        return list(zip(lats, lons))
+
+    c_AB = polyline.encode(make_curve(nodes_info[0], nodes_info[1]))
+    c_AC = polyline.encode(make_curve(nodes_info[0], nodes_info[2]))
+    c_BD = polyline.encode(make_curve(nodes_info[1], nodes_info[3]))
+    c_CD = polyline.encode(make_curve(nodes_info[2], nodes_info[3]))
+    
+    G.add_edge(node_indices["Junction_A"], node_indices["Junction_B"], {"weight": 5.0, "highway": "primary", "polyline": c_AB})
+    G.add_edge(node_indices["Junction_A"], node_indices["Junction_C"], {"weight": 3.0, "highway": "secondary", "polyline": c_AC})
+    G.add_edge(node_indices["Junction_B"], node_indices["Junction_D"], {"weight": 4.0, "highway": "residential", "polyline": c_BD})
+    G.add_edge(node_indices["Junction_C"], node_indices["Junction_D"], {"weight": 8.0, "highway": "primary", "polyline": c_CD})
+    
+    # Build KDTree
+    tree = KDTree(coords_list)
     
     graph_path = os.path.join(backend_dir, "routing_graph.pkl")
     with open(graph_path, "wb") as f:
-        pickle.dump(G, f)
-    print(f"Mock routing graph saved to {graph_path}")
+        pickle.dump({"graph": G, "kdtree": tree, "node_indices": node_indices}, f)
+    print(f"Mock routing graph and KDTree saved to {graph_path}")
 
 if __name__ == '__main__':
     # Ensure raw dataset is cleaned using backend/data_pipeline.py
@@ -269,5 +319,6 @@ if __name__ == '__main__':
     print("Cleaning raw data...")
     clean_data(raw_data_path, cleaned_data_path)
     
-    train_risk_model(cleaned_data_path)
+    # train_risk_model(cleaned_data_path) # Bypassing due to XGBoost Windows App Control Block
+    train_etr_model(cleaned_data_path)
     build_mock_routing_graph()

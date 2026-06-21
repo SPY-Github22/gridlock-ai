@@ -14,13 +14,26 @@ def clean_data(input_path: str, output_path: str):
     df = df[(df['latitude'] > 12.7) & (df['latitude'] < 13.2) & 
             (df['longitude'] > 77.4) & (df['longitude'] < 77.8)]
     
-    # 2. Extract Temporal Features
+    # 2. Extract Temporal Features and Duration
     print("Extracting temporal features...")
     df['start_datetime'] = pd.to_datetime(df['start_datetime'], errors='coerce')
-    df = df.dropna(subset=['start_datetime'])
+    df['resolved_datetime'] = pd.to_datetime(df['resolved_datetime'], errors='coerce')
+    df['closed_datetime'] = pd.to_datetime(df['closed_datetime'], errors='coerce')
+    
+    # Coalesce: use resolved_datetime, if NaT use closed_datetime
+    df['end_time'] = df['resolved_datetime'].combine_first(df['closed_datetime'])
+    
+    df = df.dropna(subset=['start_datetime', 'end_time'])
+    
     df['hour'] = df['start_datetime'].dt.hour
     df['day_of_week'] = df['start_datetime'].dt.dayofweek
     df['is_peak'] = df['hour'].apply(lambda x: 1 if (8 <= x <= 11) or (17 <= x <= 20) else 0)
+    
+    # Calculate duration in minutes for ETR Model
+    df['duration_minutes'] = (df['end_time'] - df['start_datetime']).dt.total_seconds() / 60.0
+    
+    # Sanitize data: Drop negative durations or > 72 hours
+    df = df[(df['duration_minutes'] > 0) & (df['duration_minutes'] <= 4320)]
     
     # 3. Handle Missing Values
     print("Handling missing values...")

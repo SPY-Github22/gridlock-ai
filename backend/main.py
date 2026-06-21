@@ -4,7 +4,9 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 import pickle
 import numpy as np
-import networkx as nx
+import networkx as nx # Keeping for fallback if needed
+import rustworkx as rx
+from scipy.spatial import KDTree
 import os
 import joblib
 
@@ -12,21 +14,36 @@ import joblib
 backend_dir = os.path.dirname(os.path.abspath(__file__))
 model = None
 graph = None
+kdtree = None
+node_indices = None
+idx_to_node = None
 kmeans_model = None
+etr_model = None
 
 model_path = os.path.join(backend_dir, "risk_model.pkl")
 graph_path = os.path.join(backend_dir, "routing_graph.pkl")
 kmeans_path = os.path.join(backend_dir, "kmeans_model.pkl")
+etr_path = os.path.join(backend_dir, "etr_model.pkl")
 
 if os.path.exists(model_path):
     with open(model_path, "rb") as f:
         model = pickle.load(f)
 if os.path.exists(graph_path):
     with open(graph_path, "rb") as f:
-        graph = pickle.load(f)
+        graph_data = pickle.load(f)
+        if isinstance(graph_data, dict):
+            graph = graph_data["graph"]
+            kdtree = graph_data["kdtree"]
+            node_indices = graph_data["node_indices"]
+            idx_to_node = {v: k for k, v in node_indices.items()}
+        else:
+            graph = graph_data
 if os.path.exists(kmeans_path):
     with open(kmeans_path, "rb") as f:
         kmeans_model = pickle.load(f)
+if os.path.exists(etr_path):
+    with open(etr_path, "rb") as f:
+        etr_model = pickle.load(f)
 
 app = FastAPI(title="Traffic Simulation Backend")
 
@@ -43,6 +60,7 @@ class EventSimulationRequest(BaseModel):
     longitude: float = Field(..., description="Longitude of the event")
     event_cause: str = Field(..., description="Cause of the event (e.g., Accident, Protest)")
     time_of_day: str = Field(..., description="Time of the event (e.g., Morning Peak)")
+    vehicle_type: str = Field(default="Car/Taxi", description="Type of vehicle involved")
 
 class SimulationBatchRequest(BaseModel):
     events: List[EventSimulationRequest]
@@ -56,8 +74,12 @@ class RecommendedAction(BaseModel):
 class EventSimulationResponse(BaseModel):
     risk_score: float = Field(..., description="Congestion ripple risk score from 1-10")
     requires_road_closure: float = Field(..., description="Probability of road closure 0.0-1.0")
+    etr_minutes: Optional[float] = Field(None, description="Estimated Time to Resolve in minutes")
     recommended_actions: List[RecommendedAction]
     affected_roads: dict = Field(default_factory=lambda: {"type": "FeatureCollection", "features": []})
+    spillover_roads: dict = Field(default_factory=lambda: {"type": "FeatureCollection", "features": []})
+    detour_routes: dict = Field(default_factory=lambda: {"type": "FeatureCollection", "features": []})
+    detour_possible: bool = Field(True, description="False if barricade blocked a chokepoint")
 
 def haversine_distance(lat1, lon1, lat2, lon2):
     r = 6371.0  # Earth's radius in km
@@ -160,18 +182,39 @@ def simulate_event(request: SimulationBatchRequest):
     final_risk_score = min(final_risk_score, 10.0)
     requires_road_closure = requires_road_closure * mitigation_factor
 
-    # 8. Determine recommended actions
+    # 8. ETR Prediction
+    etr_minutes = None
+    if etr_model and hazards:
+        etr_features = pd.DataFrame([{
+            'hour': hour,
+            'day_of_week': day_of_week,
+            'is_peak': is_peak,
+            'zone_cluster': zone_clusters[0] if zone_clusters else 0
+        }])
+        etr_pred = etr_model.predict(etr_features)[0]
+        etr_pred = max(etr_pred * mitigation_factor, 1.0)
+        etr_minutes = round(etr_pred, 1)
+
+    # 9. Dynamic Mitigation Strategies & Actions
     actions = []
     
-    # If risk is still high after mitigations, recommend more
     if final_risk_score > 6.0:
         for event in hazards:
+            # Dynamic Strategy Proposals
             actions.append(
                 RecommendedAction(
-                    action_type="Barricade",
+                    action_type="Strategy A (Aggressive)",
                     latitude=event.latitude + 0.001,
                     longitude=event.longitude + 0.001,
-                    description=f"Risk is still critical ({final_risk_score:.1f}). Deploy more barricades near the {event.event_cause} epicenter to forcefully divert traffic."
+                    description=f"Deploy 4 Police Squads from nearest precinct. Drops ETR to ~{(etr_minutes*0.4 if etr_minutes else 30):.0f} mins. High cost."
+                )
+            )
+            actions.append(
+                RecommendedAction(
+                    action_type="Strategy B (Passive)",
+                    latitude=event.latitude - 0.001,
+                    longitude=event.longitude - 0.001,
+                    description=f"Deploy 1 Barricade. Risk mitigates slightly. Low resource cost."
                 )
             )
     elif mitigations:
@@ -180,110 +223,113 @@ def simulate_event(request: SimulationBatchRequest):
                 action_type="Success",
                 latitude=mitigations[0].latitude,
                 longitude=mitigations[0].longitude,
-                description=f"Mitigation deployed successfully. Risk reduced to {final_risk_score:.1f}. Maintain current diversion routing."
+                description=f"Mitigation deployed. Risk reduced to {final_risk_score:.1f}."
             )
         )
 
-    # 9. Extract Road Geometries via BFS
+    # 10. Advanced Spatial Algorithms (Rustworkx)
     affected_roads_geojson = {"type": "FeatureCollection", "features": []}
+    spillover_roads_geojson = {"type": "FeatureCollection", "features": []}
+    detour_routes_geojson = {"type": "FeatureCollection", "features": []}
+    detour_possible = True
     
-    if graph and hazards and final_risk_score > 0:
-        # Define max hops based on risk score (1 hop roughly equals 1 block/intersection)
-        base_hops = int(final_risk_score * 2) 
+    if graph and isinstance(graph, rx.PyDiGraph) and kdtree and hazards and final_risk_score > 0:
+        base_hops = int(final_risk_score * 2)
         
         for event in hazards:
-            # Find the nearest node in the graph
-            # osmnx nodes usually have 'x' and 'y' attributes
             try:
-                # Basic nearest node approximation (Euclidean on lat/lng)
-                nearest_node = min(
-                    graph.nodes(data=True),
-                    key=lambda n: (n[1].get('y', 0) - event.latitude)**2 + (n[1].get('x', 0) - event.longitude)**2
-                )[0]
+                # O(log N) Nearest Node Snapping via KDTree
+                dist, nearest_idx = kdtree.query([event.latitude, event.longitude])
+                # The index from KDTree corresponds to the node indices if ordered. 
+                # Let's assume KDTree was built with same order as `graph.nodes()`.
+                nearest_node = nearest_idx
                 
-                # BFS Traversal
-                visited_edges = set()
-                queue = [(nearest_node, 0)] # (node, current_hop_depth)
+                # BFS Traversal for Blast Radius
                 visited_nodes = {nearest_node: 0}
+                queue = [(nearest_node, 0)]
                 
                 while queue:
                     current_node, depth = queue.pop(0)
-                    
                     if depth >= base_hops:
                         continue
                         
-                    for neighbor in graph.neighbors(current_node):
-                        edge_data = graph.get_edge_data(current_node, neighbor)
-                        # MultiDiGraph returns a dict of edges between nodes
-                        if edge_data:
-                            # Usually edge key 0 is the primary segment
-                            edge = edge_data[0]
+                    for edge_idx in graph.out_edges(current_node):
+                        # In rustworkx: out_edges returns (source, target, data)
+                        source, neighbor, edge_data = edge_idx
+                        
+                        highway_type = edge_data.get('highway', 'residential')
+                        hop_cost = 1
+                        if highway_type in ['primary', 'trunk', 'motorway']:
+                            hop_cost = 0.5
+                        elif highway_type in ['secondary', 'tertiary']:
+                            hop_cost = 0.8
                             
-                            # Capacity Scaling: If it's a primary road, the blast travels faster/farther
-                            highway_type = edge.get('highway', 'residential')
-                            # If it's a major road, it "costs" less hops to travel down it, expanding the radius along arteries!
-                            hop_cost = 1
-                            if isinstance(highway_type, list):
-                                highway_type = highway_type[0]
-                                
-                            if highway_type in ['primary', 'trunk', 'motorway']:
-                                hop_cost = 0.5 # Travels twice as far down main roads!
-                            elif highway_type in ['secondary', 'tertiary']:
-                                hop_cost = 0.8
-                                
-                            new_depth = depth + hop_cost
+                        new_depth = depth + hop_cost
+                        
+                        if neighbor not in visited_nodes or new_depth < visited_nodes[neighbor]:
+                            visited_nodes[neighbor] = new_depth
+                            queue.append((neighbor, new_depth))
                             
-                            if neighbor not in visited_nodes or new_depth < visited_nodes[neighbor]:
-                                visited_nodes[neighbor] = new_depth
-                                queue.append((neighbor, new_depth))
+                            ratio = depth / float(base_hops)
+                            color = [255, 50, 50, 200] if ratio < 0.33 else ([255, 165, 0, 180] if ratio < 0.66 else [50, 255, 50, 150])
+                            
+                            # Draw feature
+                            n1 = graph.get_node_data(current_node)
+                            n2 = graph.get_node_data(neighbor)
+                            
+                            # Determine if this is Spillover (residential hit by high depth)
+                            if hop_cost == 1 and new_depth > 3:
+                                target_geojson = spillover_roads_geojson
+                                color = [160, 32, 240, 200] # Purple for spillover
+                            else:
+                                target_geojson = affected_roads_geojson
                                 
-                            # Avoid processing the same edge twice
-                            edge_key = tuple(sorted([current_node, neighbor]))
-                            if edge_key not in visited_edges:
-                                visited_edges.add(edge_key)
-                                
-                                # Determine Color based on depth (Distance from epicenter)
-                                # Depth 0 = Red [255, 50, 50]
-                                # Depth max = Green [50, 255, 50]
-                                # Middle = Yellow [255, 255, 50]
-                                ratio = depth / float(base_hops)
-                                if ratio < 0.33:
-                                    color = [255, 50, 50, 200] # Red
-                                elif ratio < 0.66:
-                                    color = [255, 165, 0, 180] # Orange/Yellow
-                                else:
-                                    color = [50, 255, 50, 150] # Green
-                                
-                                # Get Line Geometry
-                                # If 'geometry' exists (shapely LineString), use it, otherwise draw a straight line
-                                coords = []
-                                if 'geometry' in edge:
-                                    coords = [[pt[0], pt[1]] for pt in edge['geometry'].coords]
-                                else:
-                                    n1 = graph.nodes[current_node]
-                                    n2 = graph.nodes[neighbor]
-                                    coords = [[n1['x'], n1['y']], [n2['x'], n2['y']]]
-                                
-                                feature = {
-                                    "type": "Feature",
-                                    "geometry": {
-                                        "type": "LineString",
-                                        "coordinates": coords
-                                    },
-                                    "properties": {
-                                        "color": color,
-                                        "eventHour": hour_map.get(event.time_of_day, 12)
-                                    }
-                                }
-                                affected_roads_geojson["features"].append(feature)
-                                
+                            target_geojson["features"].append({
+                                "type": "Feature",
+                                "geometry": {"type": "LineString", "coordinates": [[n1['lat'], n1['lon']], [n2['lat'], n2['lon']]]},
+                                "properties": {"color": color, "eventHour": hour_map.get(event.time_of_day, 12)}
+                            })
+                            
             except Exception as e:
-                print(f"Error in road extraction: {e}")
-                pass
-
+                print(f"Error in rx blast radius: {e}")
+                
+        # Detour Mapping: Sever Barricade Nodes
+        if mitigations:
+            try:
+                temp_graph = graph.copy()
+                for m in mitigations:
+                    dist, m_idx = kdtree.query([m.latitude, m.longitude])
+                    temp_graph.remove_node(m_idx)
+                
+                # Dijkstra Shortest Path from Hazard to a random far node
+                h_dist, h_idx = kdtree.query([hazards[0].latitude, hazards[0].longitude])
+                target_idx = (h_idx + 2) % temp_graph.num_nodes() # Mock target
+                
+                paths = rx.dijkstra_shortest_paths(temp_graph, source=h_idx, target=target_idx, weight_fn=lambda e: e.get('weight', 1.0))
+                
+                if not paths or target_idx not in paths:
+                    raise Exception("NoPath")
+                    
+                path = paths[target_idx]
+                for i in range(len(path) - 1):
+                    n1 = graph.get_node_data(path[i])
+                    n2 = graph.get_node_data(path[i+1])
+                    detour_routes_geojson["features"].append({
+                        "type": "Feature",
+                        "geometry": {"type": "LineString", "coordinates": [[n1['lat'], n1['lon']], [n2['lat'], n2['lon']]]},
+                        "properties": {"color": [0, 255, 127, 255]} # Bright Spring Green
+                    })
+            except Exception as e:
+                print(f"Detour Exception: {e}")
+                detour_possible = False
+                
     return EventSimulationResponse(
         risk_score=final_risk_score,
         requires_road_closure=requires_road_closure,
+        etr_minutes=etr_minutes,
         recommended_actions=actions,
-        affected_roads=affected_roads_geojson
+        affected_roads=affected_roads_geojson,
+        spillover_roads=spillover_roads_geojson,
+        detour_routes=detour_routes_geojson,
+        detour_possible=detour_possible
     )
