@@ -202,7 +202,7 @@ export default function GeospatialMap() {
           },
           getRadius: (d) => {
             if (d.cause === 'Barricade' || d.cause === 'Police Squad' || d.cause === 'VMS' || d.cause === 'Green Wave') return 30;
-            const baseRadius = (riskScore ?? 0) > 0 ? 50 + ((riskScore ?? 0) * 15) : 30;
+            const baseRadius = (riskScore ?? 0) > 0 ? 30 + ((riskScore ?? 0) * 2) : 30;
             return baseRadius * pulseFactor;
           },
           stroked: true,
