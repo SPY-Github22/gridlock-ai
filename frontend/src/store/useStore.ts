@@ -5,6 +5,7 @@ export interface EventData {
   lat: number;
   lng: number;
   cause: string;
+  vehicleType?: string;
   timeHour: number;
 }
 

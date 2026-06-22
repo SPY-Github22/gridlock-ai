@@ -144,10 +144,9 @@ def _build_road_feature(
 # ---------------------------------------------------------------------------
 
 def compute_affected_roads(
-    hazard_coords: List[Tuple[float, float]],
+    hazard_infos: List[Tuple[float, float, int]],
     barricaded_nodes: Set[int],
     final_risk_score: float,
-    hour: int,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
     BFS outward from each hazard node to find which roads are congested.
@@ -160,8 +159,9 @@ def compute_affected_roads(
         return affected, spillover
 
     base_hops = max(2, int(final_risk_score * 2))
+    hazard_coords = [(lat, lon) for lat, lon, _ in hazard_infos]
 
-    for h_lat, h_lon in hazard_coords:
+    for h_lat, h_lon, h_hour in hazard_infos:
         try:
             _, nearest_idx = kdtree.query([h_lat, h_lon])
             nearest_node = int(nearest_idx)
@@ -197,7 +197,7 @@ def compute_affected_roads(
                         feature = _build_road_feature(
                             current_node, neighbor, edge_data,
                             final_risk_score, hazard_coords,
-                            hour, decay_factor, is_spillover
+                            h_hour, decay_factor, is_spillover
                         )
                         road_id = feature["road_id"]
 
@@ -255,14 +255,15 @@ def compute_detour_routes(
         if not temp_graph.has_node(first_hazard_idx):
             return [], False
 
-        valid_nodes = list(temp_graph.node_indices())
-        if not valid_nodes:
-            return [], False
-
-        target_idx = next(
-            (idx for idx in valid_nodes if idx != first_hazard_idx),
-            first_hazard_idx,
-        )
+        # Query the 150 closest nodes. We pick the furthest one in that local cluster
+        # to ensure the detour is meaningful but stays localized (not cross-city).
+        _, nearest_indices = kdtree.query([first_lat, first_lon], k=150)
+        target_idx = first_hazard_idx
+        for idx in reversed(nearest_indices):
+            idx = int(idx)
+            if idx != first_hazard_idx and temp_graph.has_node(idx):
+                target_idx = idx
+                break
 
         paths = rx.dijkstra_shortest_paths(
             temp_graph,

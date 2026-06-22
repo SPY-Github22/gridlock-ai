@@ -70,7 +70,7 @@ export function useSimulation() {
           longitude: e.lng,
           event_cause: e.cause,
           time_of_day: getCategoryFromHour(e.timeHour),
-          vehicle_type: vehicleType,
+          vehicle_type: e.vehicleType || vehicleType,
         })),
       };
 

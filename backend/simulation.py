@@ -200,6 +200,26 @@ def run_simulation_logic(
     if crowd_densities:
         final_risk_score *= 0.7 + 0.6 * float(np.mean(crowd_densities))
 
+    # Apply vehicle type dampening
+    v_mods = []
+    for h in hazards:
+        if h.event_cause == "Accident" or h.event_cause == "Vehicle Breakdown":
+            if h.vehicle_type == "Two-Wheeler":
+                v_mods.append(0.3)
+            elif h.vehicle_type == "Car/Taxi" or h.vehicle_type == "Car":
+                v_mods.append(0.7)
+            elif h.vehicle_type in ["Heavy Truck", "Heavy Commercial", "Bus", "Truck"]:
+                v_mods.append(1.5)
+            elif h.vehicle_type == "LCV (Light Commercial)":
+                v_mods.append(1.0)
+            else:
+                v_mods.append(1.0)
+        else:
+            v_mods.append(1.0)
+    
+    vehicle_type_modifier = max(v_mods) if v_mods else 1.0
+    final_risk_score *= vehicle_type_modifier
+
     final_risk_score = max(1.0, min(10.0, final_risk_score))
     requires_road_closure *= avg_mitigation_factor
 
@@ -239,7 +259,8 @@ def run_simulation_logic(
         ))
 
     # ── Spatial analysis (BFS road spreading + detour routing) ───────────────
-    hazard_coords = [(h.latitude, h.longitude) for h in hazards]
+    hazard_infos = [(h.latitude, h.longitude, HOUR_MAP.get(h.time_of_day, 12)) for h in hazards]
+    hazard_coords_only = [(h.latitude, h.longitude) for h in hazards]
     barricaded_nodes = set()
     green_wave_active = False
 
@@ -252,12 +273,12 @@ def run_simulation_logic(
                 green_wave_active = True
 
     affected_dict, spillover_dict = spatial.compute_affected_roads(
-        hazard_coords, barricaded_nodes, final_risk_score, hour
+        hazard_infos, barricaded_nodes, final_risk_score
     )
 
     mitigation_coords = [(m.latitude, m.longitude) for m in mitigations]
     detour_routes, detour_possible = spatial.compute_detour_routes(
-        hazard_coords, mitigation_coords, hour, green_wave_active
+        hazard_coords_only, mitigation_coords, hour, green_wave_active
     )
 
     return EventSimulationResponse(

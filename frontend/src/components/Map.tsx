@@ -131,11 +131,13 @@ export default function GeospatialMap() {
   const handleMapClick = (info: any) => {
     // Only allow placing pin if we are not currently waiting for API
     if (info.coordinate && !isSimulating) {
+      const isAccident = eventCause === 'Accident' || eventCause === 'Vehicle Breakdown';
       addEvent({
         id: Date.now(),
         lng: info.coordinate[0], 
         lat: info.coordinate[1],
         cause: eventCause,
+        vehicleType: isAccident ? useStore.getState().vehicleType : undefined,
         timeHour: timeOfDayHour
       });
     }
@@ -202,7 +204,21 @@ export default function GeospatialMap() {
           },
           getRadius: (d) => {
             if (d.cause === 'Barricade' || d.cause === 'Police Squad' || d.cause === 'VMS' || d.cause === 'Green Wave') return 30;
-            const baseRadius = (riskScore ?? 0) > 0 ? 30 + ((riskScore ?? 0) * 2) : 30;
+            
+            let baseRadius = 30;
+            if (d.cause === 'Waterlogging') baseRadius = 600;
+            else if (d.cause === 'VIP Movement') baseRadius = 50;
+            else if (d.cause === 'Protest / Rally') baseRadius = 200;
+            else if (d.cause === 'Accident' || d.cause === 'Vehicle Breakdown') {
+              if (d.vehicleType === 'Two-Wheeler') baseRadius = 80;
+              else if (d.vehicleType === 'Heavy Truck') baseRadius = 400;
+              else if (d.vehicleType === 'LCV (Light Commercial)') baseRadius = 200;
+              else baseRadius = 150; // Car/Taxi
+            }
+            
+            // Add slight risk score inflation
+            baseRadius += ((riskScore ?? 0) * 2);
+            
             return baseRadius * pulseFactor;
           },
           stroked: true,
