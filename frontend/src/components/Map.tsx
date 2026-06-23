@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import DeckGL from '@deck.gl/react';
 import { Map as MapGL } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { ScatterplotLayer, GeoJsonLayer } from '@deck.gl/layers';
+import { ScatterplotLayer, GeoJsonLayer, TextLayer } from '@deck.gl/layers';
 import { useStore } from '../store/useStore';
 
 /**
