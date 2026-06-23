@@ -160,18 +160,7 @@ export default function GeospatialMap() {
   const layers = useMemo(() => {
     const arr = [];
 
-    // 0. The World Mask (Inverted Polygon)
-    arr.push(
-      new GeoJsonLayer({
-        id: 'world-mask-layer',
-        data: '/mask.geojson',
-        filled: true,
-        getFillColor: [0, 0, 0, 240], // 95% opacity black covering the world
-        stroked: true,
-        getLineColor: [0, 240, 255, 100], // Subtle neon border around Bangalore
-        lineWidthMinPixels: 2
-      })
-    );
+
 
     // 0.5 Road Network Overlay
     if (roadNetwork) {
@@ -203,24 +192,27 @@ export default function GeospatialMap() {
             return [0, 240, 255, 200]; // Brand Neon Blue for Hazards
           },
           getRadius: (d) => {
-            if (d.cause === 'Barricade' || d.cause === 'Police Squad' || d.cause === 'VMS' || d.cause === 'Green Wave') return 30;
+            if (d.cause === 'Barricade' || d.cause === 'Police Squad' || d.cause === 'VMS' || d.cause === 'Green Wave') return 4;
             
-            let baseRadius = 30;
-            if (d.cause === 'Waterlogging') baseRadius = 600;
-            else if (d.cause === 'VIP Movement') baseRadius = 50;
-            else if (d.cause === 'Protest / Rally') baseRadius = 200;
+            let baseRadius = 4;
+            // Physical footprint in meters
+            if (d.cause === 'Waterlogging') baseRadius = 40; 
+            else if (d.cause === 'VIP Movement') baseRadius = 15;
+            else if (d.cause === 'Protest / Rally') baseRadius = 25;
             else if (d.cause === 'Accident' || d.cause === 'Vehicle Breakdown') {
-              if (d.vehicleType === 'Two-Wheeler') baseRadius = 80;
-              else if (d.vehicleType === 'Heavy Truck') baseRadius = 400;
-              else if (d.vehicleType === 'LCV (Light Commercial)') baseRadius = 200;
-              else baseRadius = 150; // Car/Taxi
+              if (d.vehicleType === 'Two-Wheeler') baseRadius = 2; // ~2m length
+              else if (d.vehicleType === 'Heavy Truck') baseRadius = 15; // ~15m length
+              else if (d.vehicleType === 'LCV (Light Commercial)') baseRadius = 8; // ~8m length
+              else baseRadius = 4; // Car/Taxi (~4m length)
             }
             
-            // Add slight risk score inflation
-            baseRadius += ((riskScore ?? 0) * 2);
+            // Add slight risk score inflation (max +20m)
+            baseRadius += ((riskScore ?? 0) * 0.5);
             
             return baseRadius * pulseFactor;
           },
+          radiusMinPixels: 6, // Ensures visibility when zoomed out
+          radiusMaxPixels: 100,
           stroked: true,
           getLineColor: [255, 255, 255],
           lineWidthMinPixels: 2,
@@ -307,6 +299,19 @@ export default function GeospatialMap() {
         })
       );
     }
+
+    // 5. The World Mask (Inverted Polygon) - DRAWN LAST AS A STENCIL
+    arr.push(
+      new GeoJsonLayer({
+        id: 'world-mask-layer',
+        data: '/mask.geojson',
+        filled: true,
+        getFillColor: [0, 0, 0, 240], // 95% opacity black covering the world
+        stroked: true,
+        getLineColor: [0, 240, 255, 100], // Subtle neon border around Bangalore
+        lineWidthMinPixels: 2
+      })
+    );
 
     return arr;
   }, [events, riskScore, actions, timeOfDayHour, affectedRoads, spilloverRoads, detourRoutes, pulseFactor, roadNetwork]);
