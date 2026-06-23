@@ -53,6 +53,12 @@ interface SimulationState {
   detourRoutes: any | null;
   setDetourRoutes: (roads: any | null) => void;
   
+  showHospitals: boolean;
+  setShowHospitals: (val: boolean) => void;
+  
+  showPoliceStations: boolean;
+  setShowPoliceStations: (val: boolean) => void;
+  
   reset: () => void;
 }
 
@@ -100,16 +106,22 @@ export const useStore = create<SimulationState>((set) => ({
   detourRoutes: null,
   setDetourRoutes: (roads) => set({ detourRoutes: roads }),
   
-  reset: () => set({ 
-    isSimulating: false, 
-    events: [], 
-    riskScore: null, 
-    roadClosureProb: null, 
+  showHospitals: false,
+  setShowHospitals: (val) => set({ showHospitals: val }),
+  
+  showPoliceStations: false,
+  setShowPoliceStations: (val) => set({ showPoliceStations: val }),
+  
+  reset: () => set({
+    isSimulating: false,
+    events: [],
+    riskScore: null,
+    roadClosureProb: null,
     actions: [],
     etrMinutes: null,
-    detourPossible: null,
     affectedRoads: null,
     spilloverRoads: null,
-    detourRoutes: null
+    detourRoutes: null,
+    detourPossible: null,
   })
 }));

@@ -111,8 +111,13 @@ export default function GeospatialMap() {
   const spilloverRoads = useStore(state => state.spilloverRoads);
   const detourRoutes = useStore(state => state.detourRoutes);
   const isSimulating = useStore(state => state.isSimulating);
+  const showHospitals = useStore(state => state.showHospitals);
+  const showPoliceStations = useStore(state => state.showPoliceStations);
+  const setShowHospitals = useStore(state => state.setShowHospitals);
+  const setShowPoliceStations = useStore(state => state.setShowPoliceStations);
 
   const [pulseFactor, setPulseFactor] = useState(1.0);
+  const [pois, setPois] = useState<any[]>([]);
 
   React.useEffect(() => {
     let animationId: number;
@@ -155,6 +160,11 @@ export default function GeospatialMap() {
         }
       })
       .catch(err => console.error("Failed to load road network overlay", err));
+
+    fetch('/pois.json')
+      .then(res => res.json())
+      .then(data => setPois(data))
+      .catch(err => console.error("Failed to load POIs", err));
   }, []);
 
   const layers = useMemo(() => {
@@ -173,6 +183,39 @@ export default function GeospatialMap() {
           lineWidthMinPixels: 1,
           getLineColor: (f: any) => f.properties.color || [100, 100, 100, 100],
           pickable: false,
+        })
+      );
+    }
+
+    // 0.6 Static POIs (Hospitals & Police)
+    const activePois = pois.filter(p => 
+      (p.type === 'hospital' && showHospitals) || 
+      (p.type === 'police' && showPoliceStations)
+    );
+
+    if (activePois.length > 0) {
+      arr.push(
+        new ScatterplotLayer({
+          id: 'poi-background-layer',
+          data: activePois,
+          getPosition: d => d.coordinates,
+          getFillColor: d => d.type === 'hospital' ? [255, 255, 255, 255] : [0, 100, 255, 255],
+          getRadius: 150,
+          radiusMinPixels: 6,
+          radiusMaxPixels: 15,
+          pickable: true,
+        })
+      );
+      arr.push(
+        new TextLayer({
+          id: 'poi-text-layer',
+          data: activePois,
+          getPosition: d => d.coordinates,
+          getText: d => d.type === 'hospital' ? '+' : '★',
+          getSize: 14,
+          getColor: [255, 0, 0, 255], // Red text/symbol
+          getAlignmentBaseline: 'center',
+          getTextAnchor: 'middle',
         })
       );
     }
@@ -314,7 +357,7 @@ export default function GeospatialMap() {
     );
 
     return arr;
-  }, [events, riskScore, actions, timeOfDayHour, affectedRoads, spilloverRoads, detourRoutes, pulseFactor, roadNetwork]);
+  }, [events, riskScore, actions, timeOfDayHour, affectedRoads, spilloverRoads, detourRoutes, pulseFactor, roadNetwork, pois, showHospitals, showPoliceStations]);
 
   const [viewState, setViewState] = useState(INITIAL_VIEW_STATE);
 
@@ -341,6 +384,28 @@ export default function GeospatialMap() {
           <div className="text-xs text-gray-300 mt-1">Placed at: {hoveredEvent.timeHour}:00</div>
         </div>
       )}
+
+      {/* POI Toggles */}
+      <div className="absolute top-4 right-4 z-50 flex flex-col gap-2 bg-black/60 p-3 rounded-lg border border-gray-800 backdrop-blur-md">
+        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-200 hover:text-white transition-colors">
+          <input 
+            type="checkbox" 
+            checked={showHospitals} 
+            onChange={(e) => setShowHospitals(e.target.checked)} 
+            className="w-4 h-4 rounded border-gray-600 bg-gray-800 focus:ring-[var(--color-brand-400)]"
+          />
+          Show Hospitals
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-200 hover:text-white transition-colors">
+          <input 
+            type="checkbox" 
+            checked={showPoliceStations} 
+            onChange={(e) => setShowPoliceStations(e.target.checked)} 
+            className="w-4 h-4 rounded border-gray-600 bg-gray-800 focus:ring-blue-500"
+          />
+          Show Police Stations
+        </label>
+      </div>
     </div>
   );
 }
