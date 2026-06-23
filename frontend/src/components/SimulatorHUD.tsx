@@ -32,6 +32,12 @@ export default function SimulatorHUD() {
     setDetourRoutes,
   } = useStore();
 
+  // Compute remaining ETR based on how far the timeline has advanced from the event's original hour
+  const simulatedHour = events.length > 0 ? events[0].timeHour : null;
+  const remainingEtr = etrMinutes !== null && simulatedHour !== null
+    ? Math.max(0, Math.round(etrMinutes - (timeOfDayHour - simulatedHour) * 60))
+    : etrMinutes;
+
   // All fetch + data-transform logic lives in the hook — not here
   const { handleSimulate } = useSimulation();
 
@@ -188,10 +194,10 @@ export default function SimulatorHUD() {
             </div>
 
             {etrMinutes !== null && (
-              <div className="flex justify-between items-center bg-[var(--color-brand-600)]/20 p-3 rounded-xl border border-[var(--color-brand-500)]/30">
-                <span className="text-sm font-medium text-[var(--color-brand-500)]">Time to Resolve</span>
+              <div className={`flex justify-between items-center p-3 rounded-xl border ${remainingEtr === 0 ? 'bg-green-500/20 border-green-500/30' : 'bg-[var(--color-brand-600)]/20 border-[var(--color-brand-500)]/30'}`}>
+                <span className={`text-sm font-medium ${remainingEtr === 0 ? 'text-green-400' : 'text-[var(--color-brand-500)]'}`}>Time to Resolve</span>
                 <span className="text-lg font-bold text-white">
-                  {etrMinutes} min
+                  {remainingEtr === 0 ? '✅ Resolved' : `${remainingEtr} min`}
                 </span>
               </div>
             )}
