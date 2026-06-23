@@ -22,7 +22,7 @@ from models import (
     MitigationItem,
 )
 from simulation import run_simulation_logic, load_models
-from spatial import load_graph
+from spatial import load_graph, load_congestion_model
 
 # ---------------------------------------------------------------------------
 # Startup — load all models and graph once
@@ -30,6 +30,7 @@ from spatial import load_graph
 
 load_models()
 load_graph()
+load_congestion_model()
 
 # ---------------------------------------------------------------------------
 # App

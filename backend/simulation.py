@@ -32,6 +32,8 @@ _backend_dir = os.path.dirname(os.path.abspath(__file__))
 risk_model = None
 kmeans_model = None
 etr_model = None
+feature_columns = None
+etr_feature_columns = None
 
 # Hour-of-day lookup used for feature engineering
 HOUR_MAP = {
@@ -45,16 +47,13 @@ HOUR_MAP = {
 
 def load_models() -> None:
     """Load all ML models from disk. Safe to call multiple times."""
-    global risk_model, kmeans_model, etr_model
+    global risk_model, kmeans_model, etr_model, feature_columns, etr_feature_columns
 
-    _load("risk_model.pkl", "Risk model", lambda m: globals().__setitem__("risk_model", m))
-    _load("kmeans_model.pkl", "KMeans model", lambda m: globals().__setitem__("kmeans_model", m))
-    _load("etr_model.pkl", "ETR model", lambda m: globals().__setitem__("etr_model", m))
-
-    # Simpler direct assignment
     risk_model = _try_load("risk_model.pkl", "Risk model")
     kmeans_model = _try_load("kmeans_model.pkl", "KMeans model")
     etr_model = _try_load("etr_model.pkl", "ETR model")
+    feature_columns = _try_load("feature_columns.pkl", "Feature columns")
+    etr_feature_columns = _try_load("etr_feature_columns.pkl", "ETR feature columns")
 
 
 def _try_load(filename: str, label: str):
@@ -171,7 +170,35 @@ def run_simulation_logic(
 
     # ── Baseline closure probability ─────────────────────────────────────────
     requires_road_closure = 0.5
-    if risk_model:
+    if risk_model and feature_columns:
+        # Build a zeroed-out array matching the training feature columns exactly
+        feature_vec = {col: 0 for col in feature_columns}
+        # Fill in the numeric base features
+        feature_vec['concurrent_event_count'] = concurrent_count
+        feature_vec['average_distance_between_events'] = avg_dist
+        feature_vec['cluster_density'] = cluster_density
+        feature_vec['hour'] = hour
+        feature_vec['day_of_week'] = day_of_week
+        feature_vec['is_peak'] = is_peak
+        # Flip the OHE flags for each hazard's cause and vehicle type
+        for h in hazards:
+            cause_col = f'cause_{h.event_cause}'
+            veh_col = f'veh_{h.vehicle_type}' if h.vehicle_type else None
+            if cause_col in feature_vec:
+                feature_vec[cause_col] = 1
+            if veh_col and veh_col in feature_vec:
+                feature_vec[veh_col] = 1
+            # Priority: default Medium if not specified
+            priority_col = 'priority_High' if h.event_cause in ('Accident', 'Vehicle Breakdown') and h.vehicle_type in ('Heavy Truck',) else 'priority_Medium'
+            if priority_col in feature_vec:
+                feature_vec[priority_col] = 1
+
+        features = np.array([[feature_vec[col] for col in feature_columns]])
+        with joblib.parallel_backend("sequential"):
+            probs = risk_model.predict_proba(features)[0]
+        requires_road_closure = float(probs[1])
+    elif risk_model:
+        # fallback: old 6-feature array
         features = np.array([[
             concurrent_count, avg_dist, cluster_density,
             hour, day_of_week, is_peak,
@@ -181,6 +208,34 @@ def run_simulation_logic(
         requires_road_closure = float(probs[1])
 
     baseline_risk = max(1.0, min(10.0, requires_road_closure * 50.0 + 4.0))
+
+    # ── Physics baseline correction per cause ─────────────────────────────────
+    # The ML model captures temporal/density patterns. These cause-specific baselines
+    # anchor the risk to physical reality, especially for rare causes in the dataset.
+    CAUSE_BASE = {
+        'Waterlogging': 8.5,
+        'Protest / Rally': 7.5,
+        'Vehicle Breakdown': 5.0,
+        'Accident': 5.5,
+        'Other': 4.0,
+    }
+    VEH_MODIFIER = {
+        'Two-Wheeler': 0.5,
+        'LCV (Light Commercial)': 0.85,
+        'Car/Taxi': 1.0,
+        'Heavy Truck': 1.6,
+    }
+    
+    if hazards:
+        # Use the most severe cause across all hazards
+        cause_bases = [CAUSE_BASE.get(h.event_cause, 4.5) for h in hazards]
+        physics_base = max(cause_bases)
+        # Blend: 40% ML-driven + 60% physics-grounded baseline
+        baseline_risk = max(1.0, min(10.0, 0.4 * baseline_risk + 0.6 * physics_base))
+        
+        # Vehicle-type residual modifier (ML will eventually learn this natively as data grows)
+        veh_mods = [VEH_MODIFIER.get(h.vehicle_type or '', 1.0) for h in hazards]
+        baseline_risk = max(1.0, min(10.0, baseline_risk * max(veh_mods)))
 
     # ── Mitigation dampening ─────────────────────────────────────────────────
     hazard_factors = []
@@ -200,39 +255,31 @@ def run_simulation_logic(
     if crowd_densities:
         final_risk_score *= 0.7 + 0.6 * float(np.mean(crowd_densities))
 
-    # Apply vehicle type dampening
-    v_mods = []
-    for h in hazards:
-        if h.event_cause == "Accident" or h.event_cause == "Vehicle Breakdown":
-            if h.vehicle_type == "Two-Wheeler":
-                v_mods.append(0.3)
-            elif h.vehicle_type == "Car/Taxi" or h.vehicle_type == "Car":
-                v_mods.append(0.7)
-            elif h.vehicle_type in ["Heavy Truck", "Heavy Commercial", "Bus", "Truck"]:
-                v_mods.append(1.5)
-            elif h.vehicle_type == "LCV (Light Commercial)":
-                v_mods.append(1.0)
-            else:
-                v_mods.append(1.0)
-        else:
-            v_mods.append(1.0)
-    
-    vehicle_type_modifier = max(v_mods) if v_mods else 1.0
-    final_risk_score *= vehicle_type_modifier
-
     final_risk_score = max(1.0, min(10.0, final_risk_score))
     requires_road_closure *= avg_mitigation_factor
 
     # ── ETR prediction ───────────────────────────────────────────────────────
     etr_minutes: Optional[float] = None
     if etr_model:
-        etr_features = pd.DataFrame([{
-            "hour": hour,
-            "day_of_week": day_of_week,
-            "is_peak": is_peak,
-            "zone_cluster": zone_clusters[0] if zone_clusters else 0,
-        }])
-        etr_pred = float(etr_model.predict(etr_features)[0])
+        if etr_feature_columns:
+            # Build dynamic OHE vector for ETR model
+            etr_vec = {col: 0 for col in etr_feature_columns}
+            etr_vec['hour'] = hour
+            etr_vec['day_of_week'] = day_of_week
+            etr_vec['is_peak'] = is_peak
+            etr_vec['zone_cluster'] = zone_clusters[0] if zone_clusters else 0
+            for h in hazards:
+                cause_col = f'cause_{h.event_cause}'
+                veh_col = f'veh_{h.vehicle_type}' if h.vehicle_type else None
+                if cause_col in etr_vec:
+                    etr_vec[cause_col] = 1
+                if veh_col and veh_col in etr_vec:
+                    etr_vec[veh_col] = 1
+            etr_df = pd.DataFrame([[etr_vec[col] for col in etr_feature_columns]], columns=etr_feature_columns)
+        else:
+            # fallback: old 4-feature ETR
+            etr_df = pd.DataFrame([{'hour': hour, 'day_of_week': day_of_week, 'is_peak': is_peak, 'zone_cluster': zone_clusters[0] if zone_clusters else 0}])
+        etr_pred = float(etr_model.predict(etr_df)[0])
         etr_minutes = round(max(etr_pred * avg_mitigation_factor, 1.0), 1)
 
     # ── Recommended actions ──────────────────────────────────────────────────
@@ -272,8 +319,24 @@ def run_simulation_logic(
             if m.event_cause == "Green Wave":
                 green_wave_active = True
 
+    # Derive duration_norm for the congestion model (0–1 scale)
+    # Use ETR if available, otherwise estimate from risk score
+    etr_for_norm = etr_minutes if etr_minutes else (final_risk_score * 15)
+    _etr_norm = float(min(1.0, max(0.0, etr_for_norm / 300.0)))
+
+    # Primary cause and vehicle type for ML weighting
+    primary_cause = hazards[0].event_cause if hazards else 'Accident'
+    primary_vehicle = hazards[0].vehicle_type or 'Car/Taxi' if hazards else 'Car/Taxi'
+    primary_zone = zone_clusters[0] if zone_clusters else 0
+    _requires_closure_int = 1 if requires_road_closure > 0.5 else 0
+
     affected_dict, spillover_dict = spatial.compute_affected_roads(
-        hazard_infos, barricaded_nodes, final_risk_score
+        hazard_infos, barricaded_nodes, final_risk_score,
+        cause=primary_cause,
+        vehicle_type=primary_vehicle,
+        requires_closure=_requires_closure_int,
+        duration_norm=_etr_norm,
+        zone_cluster=primary_zone,
     )
 
     mitigation_coords = [(m.latitude, m.longitude) for m in mitigations]
