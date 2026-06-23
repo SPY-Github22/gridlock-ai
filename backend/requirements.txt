@@ -2,7 +2,7 @@ fastapi
 uvicorn
 pydantic
 pandas
-scikit-learn==1.9.0
+scikit-learn==1.6.1
 xgboost
 networkx
 rustworkx==0.18.0
@@ -14,5 +14,6 @@ pytest-asyncio
 matplotlib
 polyline
 osmnx
+imbalanced-learn
 
 
