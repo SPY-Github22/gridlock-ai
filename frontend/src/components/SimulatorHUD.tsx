@@ -34,9 +34,15 @@ export default function SimulatorHUD() {
 
   // Compute remaining ETR based on how far the timeline has advanced from the event's original hour
   const simulatedHour = events.length > 0 ? events[0].timeHour : null;
+  const timeDiff = simulatedHour !== null ? Math.max(0, timeOfDayHour - simulatedHour) : 0;
   const remainingEtr = etrMinutes !== null && simulatedHour !== null
-    ? Math.max(0, Math.round(etrMinutes - (timeOfDayHour - simulatedHour) * 60))
+    ? Math.max(0, Math.round(etrMinutes - timeDiff * 60))
     : etrMinutes;
+
+  // Ripple Risk decays as time passes, mirroring the visual road healing
+  const decayedRiskScore = riskScore !== null
+    ? Math.max(0, riskScore * Math.max(0, 1 - timeDiff / 8))
+    : null;
 
   // All fetch + data-transform logic lives in the hook — not here
   const { handleSimulate } = useSimulation();
@@ -178,8 +184,8 @@ export default function SimulatorHUD() {
           >
             <div className="flex justify-between items-center bg-black/40 p-3 rounded-xl border border-[var(--color-glass-border)]">
               <span className="text-sm font-medium text-gray-300">Ripple Risk</span>
-              <span className={`text-xl font-bold ${riskScore > 7 ? 'text-red-500' : 'text-orange-400'}`}>
-                {riskScore.toFixed(1)} <span className="text-xs text-gray-500">/ 10</span>
+              <span className={`text-xl font-bold ${decayedRiskScore === 0 ? 'text-green-400' : (decayedRiskScore ?? 0) > 7 ? 'text-red-500' : 'text-orange-400'}`}>
+                {decayedRiskScore === 0 ? '✅ Clear' : `${(decayedRiskScore ?? 0).toFixed(1)}`} <span className="text-xs text-gray-500">/ 10</span>
               </span>
             </div>
 
