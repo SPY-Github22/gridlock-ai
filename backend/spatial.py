@@ -255,12 +255,15 @@ def compute_detour_routes(
         if not temp_graph.has_node(first_hazard_idx):
             return [], False
 
-        # Query the 150 closest nodes. We pick the furthest one in that local cluster
-        # to ensure the detour is meaningful but stays localized (not cross-city).
-        _, nearest_indices = kdtree.query([first_lat, first_lon], k=150)
+        # Query the 80 closest nodes. We pick the furthest one that is still
+        # within ~500 m of the hazard to prevent cross-city detour lines.
+        MAX_DETOUR_RADIUS_DEG = 0.005  # ~500 m in lat/lon degrees
+        dists, nearest_indices = kdtree.query([first_lat, first_lon], k=80)
         target_idx = first_hazard_idx
-        for idx in reversed(nearest_indices):
+        for dist, idx in zip(reversed(dists), reversed(nearest_indices)):
             idx = int(idx)
+            if dist > MAX_DETOUR_RADIUS_DEG:
+                continue
             if idx != first_hazard_idx and temp_graph.has_node(idx):
                 target_idx = idx
                 break
